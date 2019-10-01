@@ -267,7 +267,7 @@ func documentProperties(doc *Document) error {
 	var err error
 	fl_dict := C.CBLDocument_Properties(doc.doc)
 	// Got the props, now I need to move them to the Props property
-	doc.Keys = doc.GetDocumentKeys()
+	doc.Keys = getDocumentKeys(doc)
 	doc.Props, err = getKeyValuePropMap(fl_dict)
 	if err != nil {
 		return err
@@ -275,7 +275,7 @@ func documentProperties(doc *Document) error {
 	return nil
 }
 
-func (doc *Document) GetDocumentKeys() []string {
+func getDocumentKeys(doc *Document) []string {
 	fl_dict := C.CBLDocument_Properties(doc.doc)
 	return getDocumentKeysHelper(fl_dict)
 }
