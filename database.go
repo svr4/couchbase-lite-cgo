@@ -432,6 +432,14 @@ callbacks. */
 func (db *Database) SendNotifications() {
 	C.CBLDatabase_SendNotifications(db.db)
 }
+/*
+	Remove a listener
+	@param uuid  A string key mapped to the listener. Must be unique.
+*/
+func RemoveListener(uuid string) {
+	token := listenerTokens[uuid]
+	C.CBLListener_Remove(token)
+}
 	   
 /** @} */
 /** @} */    // end of outer \defgroup
