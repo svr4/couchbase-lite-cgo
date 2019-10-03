@@ -5,7 +5,8 @@ package cblcgo
 #include <stdio.h>
 #include "include/CouchbaseLite.h"
 
-void gatewayGoCallback(void *context, const CBLDatabase* db _cbl_nonnull, unsigned numDocs, const char **docIDs _cbl_nonnull);
+void gatewayDatabaseChangeGoCallback(void *context, const CBLDatabase* db _cbl_nonnull, unsigned numDocs, const char **docIDs _cbl_nonnull);
+void gatewayDocumentChangeGoCallback(void *context, const CBLDatabase* db _cbl_nonnull, const char *docID _cbl_nonnull);
 void notificationReadyCallback(void *context, CBLDatabase* db _cbl_nonnull);
 
 */
@@ -13,8 +14,8 @@ import "C"
 import "unsafe"
 import "context"
 
-//export listenerBridge
-func listenerBridge(c unsafe.Pointer, db *C.CBLDatabase, numDocs C.unsigned, docIDs **C.char) {
+//export databaseListenerBridge
+func databaseListenerBridge(c unsafe.Pointer, db *C.CBLDatabase, numDocs C.unsigned, docIDs **C.char) {
 	ctx := (*context.Context)(c)
 	ids := make([]string, numDocs)
 
@@ -27,7 +28,17 @@ func listenerBridge(c unsafe.Pointer, db *C.CBLDatabase, numDocs C.unsigned, doc
 	database := Database{}
 	database.db = db
 
-	changeListener(*ctx, &database, ids)
+	v := (*ctx).Value(uuid).(string)
+	(databaseChangeListeners[v])(*ctx, &database, ids)
+}
+//export documentListenerBridge
+func documentListenerBridge(c unsafe.Pointer, db *C.CBLDatabase, c_docID *C.char) {
+	ctx := (*context.Context)(c)
+	docId := C.GoString(c_docID)
+	database := Database{}
+	database.db = db
+	v := (*ctx).Value(uuid).(string)
+	(documentChangeListeners[v])(*ctx, &database, docId)
 }
 //export notificationBridge
 func notificationBridge(c unsafe.Pointer, db *C.CBLDatabase) {

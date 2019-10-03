@@ -5,11 +5,11 @@ package cblcgo
 #include <stdio.h>
 #include "include/CouchbaseLite.h"
 
-void listenerBridge(void *, CBLDatabase*, unsigned, char **);
+void databaseListenerBridge(void *, CBLDatabase*, unsigned, char **);
 void notificationBridge(void *);
 
-void gatewayGoCallback(void *context, const CBLDatabase* db _cbl_nonnull, unsigned numDocs, const char **docIDs _cbl_nonnull) {
-	listenerBridge(context, (CBLDatabase*)db, numDocs, (char**)docIDs);
+void gatewayDatabaseChangeGoCallback(void *context, const CBLDatabase* db _cbl_nonnull, unsigned numDocs, const char **docIDs _cbl_nonnull) {
+	databaseListenerBridge(context, (CBLDatabase*)db, numDocs, (char**)docIDs);
 }
 
 void notificationReadyCallback(void *context, CBLDatabase* db _cbl_nonnull) {
@@ -19,6 +19,7 @@ void notificationReadyCallback(void *context, CBLDatabase* db _cbl_nonnull) {
 import "C"
 import "unsafe"
 import "context"
+import "fmt"
 
 type EncryptionAlgorithm uint32
 type DatabaseFlags uint32
@@ -41,8 +42,11 @@ type Database struct {
 	name string
 }
 
-var changeListener DatabaseChangeListener
+
+var databaseChangeListeners map[string]DatabaseChangeListener
+var listenerTokens map[string]*C.CBLListenerToken
 var notificationCallback NotificationsReadyCallback
+var uuid string = "UUID"
 
 /** Encryption key specified in a \ref CBLDatabaseConfiguration. */
 type EncryptionKey struct {
@@ -176,6 +180,10 @@ func Open(name string, config *DatabaseConfiguration) *Database {
 	database.db = c_db
 	database.config = &c_config
 	database.name = name
+
+	// Setup listener maps
+	databaseChangeListeners = make(map[string]DatabaseChangeListener)
+	listenerTokens = make(map[string]*C.CBLListenerToken)
 
 	C.free(unsafe.Pointer(c_name))
 	return &database
@@ -356,10 +364,18 @@ listener.*/
 // CBLListenerToken* CBLDatabase_AddChangeListener(const CBLDatabase* db _cbl_nonnull,
 // 		  CBLDatabaseChangeListener listener _cbl_nonnull,
 // 		  void *context) CBLAPI;
-func (db *Database) AddChangeListener(listener DatabaseChangeListener, ctx context.Context) {
-	changeListener = listener
-	C.CBLDatabase_AddChangeListener(db.db, (C.CBLDatabaseChangeListener)(C.gatewayGoCallback), unsafe.Pointer(&ctx))
-
+func (db *Database) AddChangeListener(listener DatabaseChangeListener, ctx context.Context) error {
+	if v := ctx.Value(uuid); v != nil {
+		key, ok := v.(string)
+		if ok {
+			databaseChangeListeners[key] = listener
+			token := C.CBLDatabase_AddChangeListener(db.db, (C.CBLDatabaseChangeListener)(C.gatewayDatabaseChangeGoCallback), unsafe.Pointer(&ctx))
+			listenerTokens[key] = token
+			return nil
+		}
+	}
+	ErrCBLInternalError = fmt.Errorf("CBL: No UUID present in context.")
+	return ErrCBLInternalError
 }
 /** @} */
 /** @} */    // end of outer \defgroup
@@ -403,6 +419,7 @@ called immediately; your \ref CBLNotificationsReadyCallback will be called inste
 // 	   CBLNotificationsReadyCallback callback _cbl_nonnull,
 // 	   void *context) CBLAPI;
 func (db *Database) DatabaseBufferNotifications(callback NotificationsReadyCallback, ctx context.Context) {
+	notificationCallback = callback
 	C.CBLDatabase_BufferNotifications(db.db, 
 		(C.CBLNotificationsReadyCallback)(C.notificationReadyCallback),
 		unsafe.Pointer(&ctx))

@@ -4,10 +4,19 @@ package cblcgo
 #include <stdlib.h>
 #include <stdio.h>
 #include "include/CouchbaseLite.h"
+
+void documentListenerBridge(void *, CBLDatabase *, char *);
+
+void gatewayDocumentChangeGoCallback(void *context, const CBLDatabase* db _cbl_nonnull, const char *docID _cbl_nonnull) {
+	documentListenerBridge(context, (CBLDatabase*)db, (char*)docID);
+}
+
 */
 import "C"
 import "unsafe"
 import "fmt"
+import "reflect"
+import "context"
 
 /** \defgroup documents   Documents
     @{
@@ -35,6 +44,8 @@ const (
 	ConcurrencyControlFailOnConflict
 )
 
+
+var documentChangeListeners map[string]DocumentChangeListener
 
 /** Reads a document from the database, creating a new (immutable) \ref CBLDocument object.
     Each call to this function creates a new object (which must later be released.)
@@ -411,17 +422,131 @@ func getFLValueToGoValue(fl_val C.FLValue) (interface{}, error) {
            releasing your own reference(s) to it. */
 // void CBLDocument_SetProperties(CBLDocument* _cbl_nonnull,
                             //    FLMutableDict properties _cbl_nonnull) CBLAPI;
+func setProperties(doc *Document) {
 
+}
 // FLDoc CBLDocument_CreateFleeceDoc(const CBLDocument* _cbl_nonnull) CBLAPI;
 
 /** Returns a document's properties as a null-terminated JSON string.
     @note You are responsible for calling `free()` on the returned string. */
 // char* CBLDocument_PropertiesAsJSON(const CBLDocument* _cbl_nonnull) CBLAPI _cbl_returns_nonnull; 
+func (doc *Document) ToJSONString() string {
+	// We need to sync up the map with the underlying FLDict
+	syncMapToUnderlyingDict(doc)
+	c_json := C.CBLDocument_PropertiesAsJSON(doc.doc)
+	json := C.GoString(c_json)
+	C.free(unsafe.Pointer(c_json))
+	return json
+}
+
+func syncMapToUnderlyingDict(doc *Document) bool {
+	if doc.ReadOnly {
+		return false
+	}
+
+	mutableDict := C.FLMutableDict_New()
+
+	for k, v := range doc.Props {
+		c_key := C.CString(k)
+		fl_slot := C.FLMutableDict_Set(mutableDict, C.FLStr(c_key))
+		switch val := reflect.TypeOf(v); val.Kind() {
+		case reflect.String:
+			value := v.(string)
+			s := fmt.Sprintf("\"%v\"", value)
+			// Create a key in the dict. Returns an FLSlot, and set the slot with the value
+			C.FLSlot_SetString(fl_slot, C.FLStr(C.CString(s)))
+			break;
+		case reflect.Array:
+		case reflect.Slice:
+		//case []byte:
+			flslice := C.FLSlice{}
+			flslice.buf = unsafe.Pointer(&v)
+			flslice.size = C.ulong(unsafe.Sizeof(v))
+			C.FLSlot_SetData(fl_slot, flslice)
+			break;
+		case reflect.Int:
+			value := v.(int)
+			C.FLSlot_SetInt(fl_slot, C.int64_t(value))
+			break;
+		case reflect.Int8:
+			value := v.(int8)
+			C.FLSlot_SetInt(fl_slot, C.int64_t(value))
+			break;
+		case reflect.Int16:
+			value := v.(int16)
+			C.FLSlot_SetInt(fl_slot, C.int64_t(value))
+			break;
+		case reflect.Int32:
+			value := v.(int32)
+			C.FLSlot_SetInt(fl_slot, C.int64_t(value))
+			break;
+		case reflect.Int64:
+			value := v.(int64)
+			C.FLSlot_SetInt(fl_slot, C.int64_t(value))
+			break;
+		case reflect.Uint:
+			value := v.(uint)
+			C.FLSlot_SetUInt(fl_slot, C.uint64_t(value))
+			break;
+		case reflect.Uintptr:
+			value := v.(uintptr)
+			C.FLSlot_SetUInt(fl_slot, C.uint64_t(value))
+			break;
+		case reflect.Uint8:
+			value := v.(uint8)
+			C.FLSlot_SetUInt(fl_slot, C.uint64_t(value))
+			break;
+		case reflect.Uint16:
+			value := v.(uint16)
+			C.FLSlot_SetUInt(fl_slot, C.uint64_t(value))
+			break;
+		case reflect.Uint32:
+			value := v.(uint32)
+			C.FLSlot_SetUInt(fl_slot, C.uint64_t(value))
+			break;
+		case reflect.Uint64:
+			value := v.(uint64)
+			C.FLSlot_SetUInt(fl_slot, C.uint64_t(value))
+			break;
+		case reflect.Float32:
+			value := v.(float32)
+			C.FLSlot_SetFloat(fl_slot, C.float(value))
+			break;
+		case reflect.Float64:
+			value := v.(float64)
+			C.FLSlot_SetDouble(fl_slot, C.double(value))
+			// double
+			break;
+		case reflect.Bool:
+			value := v.(bool)
+			C.FLSlot_SetBool(fl_slot, C.bool(value))
+			break;
+		default:
+			return false
+		}
+
+	}
+	
+	C.CBLDocument_SetProperties(doc.doc, mutableDict)
+	C.free(unsafe.Pointer(mutableDict))
+	return true
+}
 
 /** Sets a mutable document's properties from a JSON string. */
 // bool CBLDocument_SetPropertiesAsJSON(CBLDocument* _cbl_nonnull,
                                     //  const char *json _cbl_nonnull,
-                                    //  CBLError*) CBLAPI;
+									//  CBLError*) CBLAPI;
+func (doc *Document) SetPropertiesAsJSON(json string) bool {
+	err := C.CBLError{}
+	c_json := C.CString(json)
+	result := bool(C.CBLDocument_SetPropertiesAsJSON(doc.doc, c_json, &err))
+	if result && err.code == 0 {
+		C.free(unsafe.Pointer(c_json))
+		documentProperties(doc)
+		return result
+	}
+	return result
+}
 
 /** Returns the time, if any, at which a given document will expire and be purged.
     Documents don't normally expire; you have to call \ref CBLDatabase_SetDocumentExpiration
@@ -435,7 +560,16 @@ func getFLValueToGoValue(fl_val C.FLValue) (interface{}, error) {
 // CBLTimestamp CBLDatabase_GetDocumentExpiration(CBLDatabase* db _cbl_nonnull,
 //                                                const char *docID _cbl_nonnull,
 //                                                CBLError* error) CBLAPI;
-
+func (db *Database) GetDocumentExpiration(docId string) (int64, error) {
+	err := C.CBLError{}
+	c_docId := C.CString(docId)
+	timestamp := C.CBLDatabase_GetDocumentExpiration(db.db, c_docId, &err)
+	if err.code == 0 {
+		return int64(timestamp), nil
+	}
+	ErrCBLInternalError = fmt.Errorf("CBL: Problem Retrieving Document Timestamp. Domain: %d Code: %d", err.domain, err.code)
+	return -1, ErrCBLInternalError
+}
 /** Sets or clears the expiration time of a document.
     @note  The purging of expired documents is not yet automatic; you will need to call
             \ref CBLDatabase_PurgeExpiredDocuments when the time comes, to make it happen.
@@ -451,7 +585,16 @@ func getFLValueToGoValue(fl_val C.FLValue) (interface{}, error) {
 //                                        CBLError* error) CBLAPI;
 
 /** @} */
-
+func (db *Database) SetDocumentExpiration(docId string, timestamp int64) bool {
+	err := C.CBLError{}
+	c_docId := C.CString(docId)
+	result := bool(C.CBLDatabase_SetDocumentExpiration(db.db, c_docId, C.CBLTimestamp(timestamp), &err))
+	if result && err.code == 0 {
+		C.free(unsafe.Pointer(c_docId))
+		return result
+	}
+	return result
+}
 
 
 /** \name  Document listeners
@@ -472,7 +615,7 @@ func getFLValueToGoValue(fl_val C.FLValue) (interface{}, error) {
 // typedef void (*CBLDocumentChangeListener)(void *context,
 //                                           const CBLDatabase* db _cbl_nonnull,
 //                                           const char *docID _cbl_nonnull);
-
+	type DocumentChangeListener func(ctx context.Context, db *Database, docId string)
 /** Registers a document change listener callback. It will be called after a specific document
     is changed on disk.
     @param db  The database to observe.
@@ -486,6 +629,20 @@ func getFLValueToGoValue(fl_val C.FLValue) (interface{}, error) {
 //                                                         const char* docID _cbl_nonnull,
 //                                                         CBLDocumentChangeListener listener _cbl_nonnull,
 //                                                         void *context) CBLAPI;
-
+func (db *Database) AddDocumentChangeListener(listener DocumentChangeListener, docId string, ctx context.Context) error {
+	if v := ctx.Value(uuid); v != nil {
+		key, ok := v.(string)
+		if ok {
+			documentChangeListeners[key] = listener
+			c_docId := C.CString(docId)
+			token := C.CBLDatabase_AddDocumentChangeListener(db.db, c_docId,
+				(C.CBLDocumentChangeListener)(C.gatewayDocumentChangeGoCallback), unsafe.Pointer(&ctx))
+			listenerTokens[key] = token
+			return nil
+		}
+	}
+	ErrCBLInternalError = fmt.Errorf("CBL: No UUID present in context.")
+	return ErrCBLInternalError
+}
 /** @} */
 /** @} */
