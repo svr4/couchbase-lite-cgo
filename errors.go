@@ -19,4 +19,7 @@ var (
 	ErrProblemReadingDocument error = fmt.Errorf("CBL: Error Reading Document")
 	ErrCBLInternalError error
 	ErrProblemSavingDocument error = fmt.Errorf("CBL: Error Saving Document")
+	ErrProblemGettingBlobWithData error = fmt.Errorf("CBL: Error Getting Blob With Data.")
+	ErrProblemCreatingBlobWithData error = fmt.Errorf("CBL: Error Creating Blob With Data.")
+	ErrUnsupportedGoType error = fmt.Errorf("CBL: Unsupported Go type. Use a slice instead.")
 )

@@ -11,6 +11,20 @@ void gatewayDocumentChangeGoCallback(void *context, const CBLDatabase* db _cbl_n
 	documentListenerBridge(context, (CBLDatabase*)db, (char*)docID);
 }
 
+FLValue FLArray_AsValue(FLArray arr) {
+	if(arr != NULL) {
+		return (FLValue)arr;
+	}
+	return NULL;
+}
+
+FLValue FLDict_AsValue(FLDict dict) {
+	if(dict != NULL) {
+		return (FLValue)dict;
+	}
+	return NULL;
+}
+
 */
 import "C"
 import "unsafe"
@@ -342,10 +356,10 @@ func getFLValueToGoValue(fl_val C.FLValue) (interface{}, error) {
 		///< Equivalent to a JSON 'null'
 		case C.kFLNull:
 			val = nil
-			break;
+			return val, nil
 		case C.kFLBoolean:
 			val = bool(C.FLValue_AsBool(fl_val))
-			break;
+			return val, nil
 		///< A numeric value, either integer or floating-point
 		case C.kFLNumber:
 			if C.FLValue_IsInteger(fl_val) {
@@ -357,15 +371,15 @@ func getFLValueToGoValue(fl_val C.FLValue) (interface{}, error) {
 			} else {
 				val = float32(C.FLValue_AsFloat(fl_val))
 			}
-			break;
+			return val, nil
 		case C.kFLString:
 			fl_str := C.FLValue_AsString(fl_val)
 			val = C.GoString((*C.char)(fl_str.buf))
-			break;
+			return val, nil
 		case C.kFLData:
 			fl_data_slice := C.FLValue_AsData(fl_val)
 			val = C.GoBytes(fl_data_slice.buf, C.int(fl_data_slice.size))
-			break;
+			return val, nil
 		case C.kFLArray:
 			// This could be a homogenous array or a hetero one.
 			// Return the bytes and let the developer decide.
@@ -379,8 +393,15 @@ func getFLValueToGoValue(fl_val C.FLValue) (interface{}, error) {
 					val = nil
 				}
 			}
-			break;
+			return val, nil
 		case C.kFLDict:
+			// Determine if dictionary is a Blob
+			if isBlob(C.FLValue_AsDict(fl_val)) {
+				if blob, err := getBlob(C.FLValue_AsDict(fl_val)); err == nil {
+					return blob, nil
+				}
+				return nil, ErrProblemGettingBlobWithData
+			}
 			// Deep iterate over the value which is a map
 			iter := C.FLDeepIterator_New(fl_val)
 			var value C.FLValue
@@ -406,7 +427,113 @@ func getFLValueToGoValue(fl_val C.FLValue) (interface{}, error) {
 			return nil, ErrInvalidCBLType
 
 		}
-		return val, ErrInvalidCBLType
+		return nil, ErrInvalidCBLType
+}
+
+func storeGoValueInSlot(fl_slot C.FLSlot, v interface{}) error {
+
+	switch val := reflect.TypeOf(v); val.Kind() {
+	case reflect.String:
+		value := v.(string)
+		s := C.CString(value)
+		// Create a key in the dict. Returns an FLSlot, and set the slot with the value
+		C.FLSlot_SetString(fl_slot, C.FLStr(s))
+		C.free(unsafe.Pointer(s))
+		break;
+	case reflect.Array:
+		return ErrUnsupportedGoType
+	case reflect.Slice:
+	//case []byte:
+		// We have to iterate through the array.
+		mutable_array := C.FLMutableArray_New()
+		v_arr := v.([]interface{})
+		for i:=0; i < len(v_arr); i++ {
+			v_slot := C.FLMutableArray_Append(mutable_array)
+			storeGoValueInSlot(v_slot, v_arr[i]);
+		}
+		fl_arr := C.FLMutableArray_GetSource(mutable_array)
+		C.FLSlot_SetValue(fl_slot, C.FLArray_AsValue(fl_arr))
+		break;
+	case reflect.Int:
+		value := v.(int)
+		C.FLSlot_SetInt(fl_slot, C.int64_t(value))
+		break;
+	case reflect.Int8:
+		value := v.(int8)
+		C.FLSlot_SetInt(fl_slot, C.int64_t(value))
+		break;
+	case reflect.Int16:
+		value := v.(int16)
+		C.FLSlot_SetInt(fl_slot, C.int64_t(value))
+		break;
+	case reflect.Int32:
+		value := v.(int32)
+		C.FLSlot_SetInt(fl_slot, C.int64_t(value))
+		break;
+	case reflect.Int64:
+		value := v.(int64)
+		C.FLSlot_SetInt(fl_slot, C.int64_t(value))
+		break;
+	case reflect.Uint:
+		value := v.(uint)
+		C.FLSlot_SetUInt(fl_slot, C.uint64_t(value))
+		break;
+	case reflect.Uintptr:
+		value := v.(uintptr)
+		C.FLSlot_SetUInt(fl_slot, C.uint64_t(value))
+		break;
+	case reflect.Uint8:
+		value := v.(uint8)
+		C.FLSlot_SetUInt(fl_slot, C.uint64_t(value))
+		break;
+	case reflect.Uint16:
+		value := v.(uint16)
+		C.FLSlot_SetUInt(fl_slot, C.uint64_t(value))
+		break;
+	case reflect.Uint32:
+		value := v.(uint32)
+		C.FLSlot_SetUInt(fl_slot, C.uint64_t(value))
+		break;
+	case reflect.Uint64:
+		value := v.(uint64)
+		C.FLSlot_SetUInt(fl_slot, C.uint64_t(value))
+		break;
+	case reflect.Float32:
+		value := v.(float32)
+		C.FLSlot_SetFloat(fl_slot, C.float(value))
+		break;
+	case reflect.Float64:
+		value := v.(float64)
+		C.FLSlot_SetDouble(fl_slot, C.double(value))
+		// double
+		break;
+	case reflect.Bool:
+		value := v.(bool)
+		C.FLSlot_SetBool(fl_slot, C.bool(value))
+		break;
+	case reflect.Map:
+		switch v.(type) {
+		case map[string]interface{}:
+			v_map := v.(map[string]interface{})
+			mutable_dict := C.FLMutableDict_New()
+
+			for key, val := range v_map {
+				c_key := C.CString(key)
+				v_slot := C.FLMutableDict_Set(mutable_dict, C.FLStr(c_key))
+				storeGoValueInSlot(v_slot, val)
+				C.free(unsafe.Pointer(c_key))
+			}
+
+			fl_dict := C.FLMutableDict_GetSource(mutable_dict)
+			C.FLSlot_SetValue(fl_slot, C.FLDict_AsValue(fl_dict))
+			break;
+		default:
+			return ErrUnsupportedGoType
+		}
+	default:
+		return ErrUnsupportedGoType
+	}
+	return nil
 }
 
 /** Returns a mutable document's properties as a mutable dictionary.
@@ -448,83 +575,18 @@ func syncMapToUnderlyingDict(doc *Document) bool {
 
 	for k, v := range doc.Props {
 		c_key := C.CString(k)
-		fl_slot := C.FLMutableDict_Set(mutableDict, C.FLStr(c_key))
-		switch val := reflect.TypeOf(v); val.Kind() {
-		case reflect.String:
-			value := v.(string)
-			s := fmt.Sprintf("\"%v\"", value)
-			// Create a key in the dict. Returns an FLSlot, and set the slot with the value
-			C.FLSlot_SetString(fl_slot, C.FLStr(C.CString(s)))
-			break;
-		case reflect.Array:
-		case reflect.Slice:
-		//case []byte:
-			flslice := C.FLSlice{}
-			flslice.buf = unsafe.Pointer(&v)
-			flslice.size = C.ulong(unsafe.Sizeof(v))
-			C.FLSlot_SetData(fl_slot, flslice)
-			break;
-		case reflect.Int:
-			value := v.(int)
-			C.FLSlot_SetInt(fl_slot, C.int64_t(value))
-			break;
-		case reflect.Int8:
-			value := v.(int8)
-			C.FLSlot_SetInt(fl_slot, C.int64_t(value))
-			break;
-		case reflect.Int16:
-			value := v.(int16)
-			C.FLSlot_SetInt(fl_slot, C.int64_t(value))
-			break;
-		case reflect.Int32:
-			value := v.(int32)
-			C.FLSlot_SetInt(fl_slot, C.int64_t(value))
-			break;
-		case reflect.Int64:
-			value := v.(int64)
-			C.FLSlot_SetInt(fl_slot, C.int64_t(value))
-			break;
-		case reflect.Uint:
-			value := v.(uint)
-			C.FLSlot_SetUInt(fl_slot, C.uint64_t(value))
-			break;
-		case reflect.Uintptr:
-			value := v.(uintptr)
-			C.FLSlot_SetUInt(fl_slot, C.uint64_t(value))
-			break;
-		case reflect.Uint8:
-			value := v.(uint8)
-			C.FLSlot_SetUInt(fl_slot, C.uint64_t(value))
-			break;
-		case reflect.Uint16:
-			value := v.(uint16)
-			C.FLSlot_SetUInt(fl_slot, C.uint64_t(value))
-			break;
-		case reflect.Uint32:
-			value := v.(uint32)
-			C.FLSlot_SetUInt(fl_slot, C.uint64_t(value))
-			break;
-		case reflect.Uint64:
-			value := v.(uint64)
-			C.FLSlot_SetUInt(fl_slot, C.uint64_t(value))
-			break;
-		case reflect.Float32:
-			value := v.(float32)
-			C.FLSlot_SetFloat(fl_slot, C.float(value))
-			break;
-		case reflect.Float64:
-			value := v.(float64)
-			C.FLSlot_SetDouble(fl_slot, C.double(value))
-			// double
-			break;
-		case reflect.Bool:
-			value := v.(bool)
-			C.FLSlot_SetBool(fl_slot, C.bool(value))
-			break;
-		default:
-			return false
+
+		switch v.(type) {
+		case (*Blob):
+			v_blob := v.(*Blob)
+			C.FLMutableDict_SetBlob(mutableDict, C.FLStr(c_key), v_blob.blob)
+			C.free(unsafe.Pointer(c_key))
+			continue;
 		}
 
+		fl_slot := C.FLMutableDict_Set(mutableDict, C.FLStr(c_key))
+		storeGoValueInSlot(fl_slot, v)
+		C.free(unsafe.Pointer(c_key))
 	}
 	
 	C.CBLDocument_SetProperties(doc.doc, mutableDict)
