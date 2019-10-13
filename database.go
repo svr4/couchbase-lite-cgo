@@ -42,6 +42,10 @@ type Database struct {
 	name string
 }
 
+type ListenerToken struct {
+	token *C.CBLListenerToken
+}
+
 
 var databaseChangeListeners map[string]DatabaseChangeListener
 var listenerTokens map[string]*C.CBLListenerToken
@@ -364,18 +368,19 @@ listener.*/
 // CBLListenerToken* CBLDatabase_AddChangeListener(const CBLDatabase* db _cbl_nonnull,
 // 		  CBLDatabaseChangeListener listener _cbl_nonnull,
 // 		  void *context) CBLAPI;
-func (db *Database) AddChangeListener(listener DatabaseChangeListener, ctx context.Context) error {
+func (db *Database) AddChangeListener(listener DatabaseChangeListener, ctx context.Context) (*ListenerToken, error) {
 	if v := ctx.Value(uuid); v != nil {
 		key, ok := v.(string)
 		if ok {
 			databaseChangeListeners[key] = listener
 			token := C.CBLDatabase_AddChangeListener(db.db, (C.CBLDatabaseChangeListener)(C.gatewayDatabaseChangeGoCallback), unsafe.Pointer(&ctx))
 			listenerTokens[key] = token
-			return nil
+			listener_token := ListenerToken{token}
+			return &listener_token, nil
 		}
 	}
 	ErrCBLInternalError = fmt.Errorf("CBL: No UUID present in context.")
-	return ErrCBLInternalError
+	return nil, ErrCBLInternalError
 }
 /** @} */
 /** @} */    // end of outer \defgroup

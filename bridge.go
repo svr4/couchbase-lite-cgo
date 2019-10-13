@@ -7,6 +7,7 @@ package cblcgo
 
 void gatewayDatabaseChangeGoCallback(void *context, const CBLDatabase* db _cbl_nonnull, unsigned numDocs, const char **docIDs _cbl_nonnull);
 void gatewayDocumentChangeGoCallback(void *context, const CBLDatabase* db _cbl_nonnull, const char *docID _cbl_nonnull);
+void gatewayQueryChangeGoCallback(void *context, CBLQuery* query _cbl_nonnull);
 void notificationReadyCallback(void *context, CBLDatabase* db _cbl_nonnull);
 FLValue FLArray_AsValue(FLArray);
 FLValue FLDict_AsValue(FLDict);
@@ -48,4 +49,11 @@ func notificationBridge(c unsafe.Pointer, db *C.CBLDatabase) {
 	d := Database{}
 	d.db = db
 	notificationCallback(*ctx, &d)
+}
+//export queryListenerBride
+func queryListenerBride(c unsafe.Pointer, query *C.CBLQuery) {
+	ctx := (*context.Context)(c)
+	q := Query{query}
+	v := (*ctx).Value(uuid).(string)
+	(queryChangeListeners[v])(*ctx, &q)
 }
