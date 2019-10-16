@@ -29,7 +29,6 @@ FLValue FLDict_AsValue(FLDict dict) {
 import "C"
 import "unsafe"
 import "fmt"
-import "reflect"
 import "context"
 
 /** \defgroup documents   Documents
@@ -41,7 +40,6 @@ type Document struct {
 	doc *C.CBLDocument
 	ReadOnly bool
 	Props map[string]interface{}
-	data []byte
 	Keys []string
 }
 
@@ -59,7 +57,6 @@ const (
 )
 
 
-var documentChangeListeners map[string]DocumentChangeListener
 
 /** Reads a document from the database, creating a new (immutable) \ref CBLDocument object.
     Each call to this function creates a new object (which must later be released.)
@@ -348,197 +345,6 @@ func getDocumentKeysHelper(fl_dict C.FLDict) []string {
 	return keys
 }
 
-func getFLValueToGoValue(fl_val C.FLValue) (interface{}, error) {
-	var val interface{}
-	switch C.FLValue_GetType(fl_val) {
-		///< Type of a NULL pointer, i.e. no such value, like JSON `undefined`. Also the type of a value created by FLEncoder_WriteUndefined().
-		case C.kFLUndefined:
-		///< Equivalent to a JSON 'null'
-		case C.kFLNull:
-			val = nil
-			return val, nil
-		case C.kFLBoolean:
-			val = bool(C.FLValue_AsBool(fl_val))
-			return val, nil
-		///< A numeric value, either integer or floating-point
-		case C.kFLNumber:
-			if C.FLValue_IsInteger(fl_val) {
-				val = int64(C.FLValue_AsInt(fl_val))
-			} else if C.FLValue_IsUnsigned(fl_val) {
-				val = uint64(C.FLValue_AsUnsigned(fl_val))
-			} else if C.FLValue_IsDouble(fl_val) {
-				val = float64(C.FLValue_AsDouble(fl_val))
-			} else {
-				val = float32(C.FLValue_AsFloat(fl_val))
-			}
-			return val, nil
-		case C.kFLString:
-			fl_str := C.FLValue_AsString(fl_val)
-			val = C.GoString((*C.char)(fl_str.buf))
-			return val, nil
-		case C.kFLData:
-			fl_data_slice := C.FLValue_AsData(fl_val)
-			val = C.GoBytes(fl_data_slice.buf, C.int(fl_data_slice.size))
-			return val, nil
-		case C.kFLArray:
-			// This could be a homogenous array or a hetero one.
-			// Return the bytes and let the developer decide.
-			// Hetero arrays can be processed by converting []byte to []interface{}
-			fl_array, err := C.FLValue_AsArray(fl_val)
-			if err == nil {
-				is_empty := bool(C.FLArray_IsEmpty(fl_array))
-				if !is_empty {
-					val = C.GoBytes(unsafe.Pointer(fl_array), C.int(C.FLArray_Count(fl_array)))
-				} else {
-					val = nil
-				}
-			}
-			return val, nil
-		case C.kFLDict:
-			// Determine if dictionary is a Blob
-			if isBlob(C.FLValue_AsDict(fl_val)) {
-				if blob, err := getBlob(C.FLValue_AsDict(fl_val)); err == nil {
-					return blob, nil
-				}
-				return nil, ErrProblemGettingBlobWithData
-			}
-			// Deep iterate over the value which is a map
-			iter := C.FLDeepIterator_New(fl_val)
-			var value C.FLValue
-
-			props := make(map[string]interface{})
-
-			for value = C.FLDeepIterator_GetValue(iter); value != nil; value = C.FLDeepIterator_GetValue(iter) {
-				// FLString
-				key := C.FLDeepIterator_GetKey(iter)
-				str_key := C.GoStringN((*C.char)(key.buf), C.int(key.size))
-				
-				i, e := getFLValueToGoValue(value)
-
-				if e == nil {
-					props[str_key] = i
-				}
-
-				C.FLDeepIterator_Next(iter)
-			}
-			C.FLDeepIterator_Free(iter)
-			return props, nil
-		default:
-			return nil, ErrInvalidCBLType
-
-		}
-		return nil, ErrInvalidCBLType
-}
-
-func storeGoValueInSlot(fl_slot C.FLSlot, v interface{}) error {
-
-	switch val := reflect.TypeOf(v); val.Kind() {
-	case reflect.String:
-		value := v.(string)
-		s := C.CString(value)
-		// Create a key in the dict. Returns an FLSlot, and set the slot with the value
-		C.FLSlot_SetString(fl_slot, C.FLStr(s))
-		C.free(unsafe.Pointer(s))
-		break;
-	case reflect.Array:
-		return ErrUnsupportedGoType
-	case reflect.Slice:
-	//case []byte:
-		// We have to iterate through the array.
-		mutable_array := C.FLMutableArray_New()
-		v_arr := v.([]interface{})
-		for i:=0; i < len(v_arr); i++ {
-			v_slot := C.FLMutableArray_Append(mutable_array)
-			storeGoValueInSlot(v_slot, v_arr[i]);
-		}
-		fl_arr := C.FLMutableArray_GetSource(mutable_array)
-		C.FLSlot_SetValue(fl_slot, C.FLArray_AsValue(fl_arr))
-		C.FLArray_Release(fl_arr)
-		C.FLMutableArray_Release(mutable_array)
-		break;
-	case reflect.Int:
-		value := v.(int)
-		C.FLSlot_SetInt(fl_slot, C.int64_t(value))
-		break;
-	case reflect.Int8:
-		value := v.(int8)
-		C.FLSlot_SetInt(fl_slot, C.int64_t(value))
-		break;
-	case reflect.Int16:
-		value := v.(int16)
-		C.FLSlot_SetInt(fl_slot, C.int64_t(value))
-		break;
-	case reflect.Int32:
-		value := v.(int32)
-		C.FLSlot_SetInt(fl_slot, C.int64_t(value))
-		break;
-	case reflect.Int64:
-		value := v.(int64)
-		C.FLSlot_SetInt(fl_slot, C.int64_t(value))
-		break;
-	case reflect.Uint:
-		value := v.(uint)
-		C.FLSlot_SetUInt(fl_slot, C.uint64_t(value))
-		break;
-	case reflect.Uintptr:
-		value := v.(uintptr)
-		C.FLSlot_SetUInt(fl_slot, C.uint64_t(value))
-		break;
-	case reflect.Uint8:
-		value := v.(uint8)
-		C.FLSlot_SetUInt(fl_slot, C.uint64_t(value))
-		break;
-	case reflect.Uint16:
-		value := v.(uint16)
-		C.FLSlot_SetUInt(fl_slot, C.uint64_t(value))
-		break;
-	case reflect.Uint32:
-		value := v.(uint32)
-		C.FLSlot_SetUInt(fl_slot, C.uint64_t(value))
-		break;
-	case reflect.Uint64:
-		value := v.(uint64)
-		C.FLSlot_SetUInt(fl_slot, C.uint64_t(value))
-		break;
-	case reflect.Float32:
-		value := v.(float32)
-		C.FLSlot_SetFloat(fl_slot, C.float(value))
-		break;
-	case reflect.Float64:
-		value := v.(float64)
-		C.FLSlot_SetDouble(fl_slot, C.double(value))
-		// double
-		break;
-	case reflect.Bool:
-		value := v.(bool)
-		C.FLSlot_SetBool(fl_slot, C.bool(value))
-		break;
-	case reflect.Map:
-		switch v.(type) {
-		case map[string]interface{}:
-			v_map := v.(map[string]interface{})
-			mutable_dict := C.FLMutableDict_New()
-
-			for key, val := range v_map {
-				c_key := C.CString(key)
-				v_slot := C.FLMutableDict_Set(mutable_dict, C.FLStr(c_key))
-				storeGoValueInSlot(v_slot, val)
-				C.free(unsafe.Pointer(c_key))
-			}
-
-			fl_dict := C.FLMutableDict_GetSource(mutable_dict)
-			C.FLSlot_SetValue(fl_slot, C.FLDict_AsValue(fl_dict))
-			C.FLDict_Release(fl_dict)
-			C.FLMutableDict_Release(mutable_dict)
-			break;
-		default:
-			return ErrUnsupportedGoType
-		}
-	default:
-		return ErrUnsupportedGoType
-	}
-	return nil
-}
 
 /** Returns a mutable document's properties as a mutable dictionary.
     You may modify this dictionary and then call \ref CBLDatabase_SaveDocument to persist the changes.
@@ -695,20 +501,27 @@ func (db *Database) SetDocumentExpiration(docId string, timestamp int64) bool {
 //                                                         const char* docID _cbl_nonnull,
 //                                                         CBLDocumentChangeListener listener _cbl_nonnull,
 //                                                         void *context) CBLAPI;
-func (db *Database) AddDocumentChangeListener(listener DocumentChangeListener, docId string, ctx context.Context) error {
-	if v := ctx.Value(uuid); v != nil {
-		key, ok := v.(string)
-		if ok {
-			documentChangeListeners[key] = listener
-			c_docId := C.CString(docId)
-			token := C.CBLDatabase_AddDocumentChangeListener(db.db, c_docId,
+func (db *Database) AddDocumentChangeListener(listener DocumentChangeListener, docId string, ctx context.Context) *ListenerToken {
+	// if v := ctx.Value(uuid); v != nil {
+	// 	key, ok := v.(string)
+	// 	if ok {
+	// 		db.documentChangeListeners[key] = listener
+	// 		c_docId := C.CString(docId)
+	// 		token := C.CBLDatabase_AddDocumentChangeListener(db.db, c_docId,
+	// 			(C.CBLDocumentChangeListener)(C.gatewayDocumentChangeGoCallback), unsafe.Pointer(&ctx))
+	// 		db.listenerTokens[key] = token
+	// 		return nil
+	// 	}
+	// }
+	// ErrCBLInternalError = fmt.Errorf("CBL: No UUID present in context.")
+	// return ErrCBLInternalError
+	ctx = context.WithValue(ctx, callback, listener)
+	c_docId := C.CString(docId)
+	token := C.CBLDatabase_AddDocumentChangeListener(db.db, c_docId,
 				(C.CBLDocumentChangeListener)(C.gatewayDocumentChangeGoCallback), unsafe.Pointer(&ctx))
-			listenerTokens[key] = token
-			return nil
-		}
-	}
-	ErrCBLInternalError = fmt.Errorf("CBL: No UUID present in context.")
-	return ErrCBLInternalError
+	C.free(unsafe.Pointer(c_docId))
+	listener_token := ListenerToken{token}
+	return &listener_token
 }
 /** @} */
 /** @} */

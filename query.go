@@ -49,7 +49,6 @@ type ResultSet struct {
 	rs *C.CBLResultSet
 }
 
-var queryChangeListeners map[string]QueryChangeListener
 
 /** \name  Query objects
     @{ */
@@ -170,6 +169,7 @@ func (q *Query) Execute() (*ResultSet, error) {
 func (q *Query) Explain() string {
 	fl_slice := C.CBLQuery_Explain(q.q)
 	strategy := C.GoStringN((*C.char)(fl_slice.buf), C.int(fl_slice.size))
+	C.FLSliceResult_Release(fl_slice)
 	return strategy
 }
 
@@ -288,19 +288,11 @@ type QueryChangeListener func(ctx context.Context, query *Query)
 // CBLListenerToken* CBLQuery_AddChangeListener(CBLQuery* query _cbl_nonnull,
                                             //  CBLQueryChangeListener listener _cbl_nonnull,
 											//  void *context) CBLAPI;
-func (q *Query) AddChangeListener(listener QueryChangeListener, ctx context.Context) (*ListenerToken, error) {
-	if v := ctx.Value(uuid); v != nil {
-		key, ok := v.(string)
-		if ok {
-			queryChangeListeners[key] = listener
-			token := C.CBLQuery_AddChangeListener(q.q, (C.CBLQueryChangeListener)(C.gatewayQueryChangeGoCallback), unsafe.Pointer(&ctx))
-			listenerTokens[key] = token
-			listener_token := ListenerToken{token}
-			return &listener_token, nil
-		}
-	}
-	ErrCBLInternalError = fmt.Errorf("CBL: No UUID present in context.")
-	return nil, ErrCBLInternalError
+func (q *Query) AddChangeListener(listener QueryChangeListener, ctx context.Context) *ListenerToken {
+  ctx = context.WithValue(ctx, callback, listener)
+  token := C.CBLQuery_AddChangeListener(q.q, (C.CBLQueryChangeListener)(C.gatewayQueryChangeGoCallback), unsafe.Pointer(&ctx))
+  listener_token := ListenerToken{token}
+  return &listener_token
 }
 
 /** Returns the query's _entire_ current result set, after it's been announced via a call to the

@@ -19,7 +19,6 @@ void notificationReadyCallback(void *context, CBLDatabase* db _cbl_nonnull) {
 import "C"
 import "unsafe"
 import "context"
-import "fmt"
 
 type EncryptionAlgorithm uint32
 type DatabaseFlags uint32
@@ -47,10 +46,10 @@ type ListenerToken struct {
 }
 
 
-var databaseChangeListeners map[string]DatabaseChangeListener
-var listenerTokens map[string]*C.CBLListenerToken
-var notificationCallback NotificationsReadyCallback
 var uuid string = "UUID"
+var callback string = "CALLBACK"
+var pushCallback = "PUSHCALLBACK"
+var pullCallback = "PULLCALLBACK"
 
 /** Encryption key specified in a \ref CBLDatabaseConfiguration. */
 type EncryptionKey struct {
@@ -186,8 +185,10 @@ func Open(name string, config *DatabaseConfiguration) *Database {
 	database.name = name
 
 	// Setup listener maps
-	databaseChangeListeners = make(map[string]DatabaseChangeListener)
-	listenerTokens = make(map[string]*C.CBLListenerToken)
+	// database.databaseChangeListeners = make(map[string]DatabaseChangeListener)
+	// database.listenerTokens = make(map[string]*C.CBLListenerToken)
+	// database.pullFilterCallbacks = make(map[string]ReplicationFilter)
+	// database.pushFilterCallbacks = make(map[string]ReplicationFilter)
 
 	C.free(unsafe.Pointer(c_name))
 	return &database
@@ -368,19 +369,11 @@ listener.*/
 // CBLListenerToken* CBLDatabase_AddChangeListener(const CBLDatabase* db _cbl_nonnull,
 // 		  CBLDatabaseChangeListener listener _cbl_nonnull,
 // 		  void *context) CBLAPI;
-func (db *Database) AddChangeListener(listener DatabaseChangeListener, ctx context.Context) (*ListenerToken, error) {
-	if v := ctx.Value(uuid); v != nil {
-		key, ok := v.(string)
-		if ok {
-			databaseChangeListeners[key] = listener
-			token := C.CBLDatabase_AddChangeListener(db.db, (C.CBLDatabaseChangeListener)(C.gatewayDatabaseChangeGoCallback), unsafe.Pointer(&ctx))
-			listenerTokens[key] = token
-			listener_token := ListenerToken{token}
-			return &listener_token, nil
-		}
-	}
-	ErrCBLInternalError = fmt.Errorf("CBL: No UUID present in context.")
-	return nil, ErrCBLInternalError
+func (db *Database) AddDatabaseChangeListener(listener DatabaseChangeListener, ctx context.Context) *ListenerToken {
+	ctx = context.WithValue(ctx, callback, listener)
+	token := C.CBLDatabase_AddChangeListener(db.db, (C.CBLDatabaseChangeListener)(C.gatewayDatabaseChangeGoCallback), unsafe.Pointer(&ctx))
+	listener_token := ListenerToken{token}
+	return &listener_token
 }
 /** @} */
 /** @} */    // end of outer \defgroup
@@ -424,7 +417,7 @@ called immediately; your \ref CBLNotificationsReadyCallback will be called inste
 // 	   CBLNotificationsReadyCallback callback _cbl_nonnull,
 // 	   void *context) CBLAPI;
 func (db *Database) DatabaseBufferNotifications(callback NotificationsReadyCallback, ctx context.Context) {
-	notificationCallback = callback
+	ctx = context.WithValue(ctx, callback, callback)
 	C.CBLDatabase_BufferNotifications(db.db, 
 		(C.CBLNotificationsReadyCallback)(C.notificationReadyCallback),
 		unsafe.Pointer(&ctx))
@@ -438,12 +431,10 @@ func (db *Database) SendNotifications() {
 	C.CBLDatabase_SendNotifications(db.db)
 }
 /*
-	Remove a listener
-	@param uuid  A string key mapped to the listener. Must be unique.
+	Removes a listener callback, given the token that was returned when it was added.
 */
-func RemoveListener(uuid string) {
-	token := listenerTokens[uuid]
-	C.CBLListener_Remove(token)
+func RemoveListener(token *ListenerToken) {
+	C.CBLListener_Remove(token.token)
 }
 	   
 /** @} */
