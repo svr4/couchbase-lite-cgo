@@ -75,16 +75,17 @@ type ResultSet struct {
 //                        int *outErrorPos,
 //                        CBLError* error) CBLAPI;
 func (db *Database) NewQuery(language QueryLanguage, queryString string) (*Query, error) {
-	err := C.CBLError{}
+	err := (*C.CBLError)(C.malloc(C.sizeof_CBLError))
+	defer C.free(unsafe.Pointer(err))
 	var outErrorPos *C.int
 	c_query_str := C.CString(queryString)
-	c_query := C.CBLQuery_New(db.db, C.CBLQueryLanguage(language), c_query_str, outErrorPos, &err)
+	c_query := C.CBLQuery_New(db.db, C.CBLQueryLanguage(language), c_query_str, outErrorPos, err)
 	C.free(unsafe.Pointer(c_query_str))
-	if err.code == 0 {
+	if (*err).code == 0 {
 		query := Query{c_query}
 		return &query, nil
 	}
-	ErrProblemPreparingQuery = fmt.Errorf("CBL: Problem Preparing Query. Domain: %d Code: %d", err.domain, err.code)
+	ErrProblemPreparingQuery = fmt.Errorf("CBL: Problem Preparing Query. Domain: %d Code: %d", (*err).domain, (*err).code)
 	return nil, ErrProblemPreparingQuery
 }
 
@@ -151,13 +152,14 @@ func (q *Query) SetParametersASJSON(json string) bool {
 // _cbl_warn_unused
 // CBLResultSet* CBLQuery_Execute(CBLQuery* _cbl_nonnull, CBLError*) CBLAPI;
 func (q *Query) Execute() (*ResultSet, error) {
-	err := C.CBLError{}
-	c_result_set := C.CBLQuery_Execute(q.q, &err)
-	if err.code == 0 {
+	err := (*C.CBLError)(C.malloc(C.sizeof_CBLError))
+	defer C.free(unsafe.Pointer(err))
+	c_result_set := C.CBLQuery_Execute(q.q, err)
+	if (*err).code == 0 {
 		results := ResultSet{c_result_set}
 		return &results, nil
 	}
-	ErrProblemExecutingQuery = fmt.Errorf("CBL: Problem Executing Query. Domain: %d Code: %d", err.domain, err.code)
+	ErrProblemExecutingQuery = fmt.Errorf("CBL: Problem Executing Query. Domain: %d Code: %d", (*err).domain, (*err).code)
 	return nil, ErrProblemExecutingQuery
 }
 
@@ -309,8 +311,9 @@ func (q *Query) AddChangeListener(listener QueryChangeListener, ctx context.Cont
 //                                       CBLError *error) CBLAPI;
 
 // func (q *Query) CurrentResults(listener *ListenerToken) (*ResultSet, error) {
-// 	err := C.CBLError{}
-// 	c_result_set := C.CBLQuery_CurrentResults(q.q, listener.token, &err)
+// err := (*C.CBLError)(C.malloc(C.sizeof_CBLError))
+// defer C.free(unsafe.Pointer(err))
+// 	c_result_set := C.CBLQuery_CurrentResults(q.q, listener.token, err)
 // 	result_set := ResultSet{c_result_set}
 // 	return &result_set, nil
 // }
@@ -407,10 +410,11 @@ func goIndexSpecToCBLIndexSpec(index IndexSpec) C.CBLIndexSpec {
 //                              CBLIndexSpec,
 //                              CBLError *outError) CBLAPI;
 func (db *Database) CreateIndex(name string, indexSpec IndexSpec) bool {
-	err := C.CBLError{}
+	err := (*C.CBLError)(C.malloc(C.sizeof_CBLError))
+	defer C.free(unsafe.Pointer(err))
 	c_name := C.CString(name)
 	c_index_spec := goIndexSpecToCBLIndexSpec(indexSpec)
-	result := bool(C.CBLDatabase_CreateIndex(db.db, c_name, c_index_spec, &err))
+	result := bool(C.CBLDatabase_CreateIndex(db.db, c_name, c_index_spec, err))
 	return result
 }
 
@@ -420,9 +424,10 @@ func (db *Database) CreateIndex(name string, indexSpec IndexSpec) bool {
 //                              const char *name _cbl_nonnull,
 //                              CBLError *outError) CBLAPI;
 func (db *Database) DeleteIndex(name string) bool {
-	err := C.CBLError{}
+	err := (*C.CBLError)(C.malloc(C.sizeof_CBLError))
+	defer C.free(unsafe.Pointer(err))
 	c_name := C.CString(name)
-	result := bool(C.CBLDatabase_DeleteIndex(db.db, c_name, &err))
+	result := bool(C.CBLDatabase_DeleteIndex(db.db, c_name, err))
 	return result
 }
 

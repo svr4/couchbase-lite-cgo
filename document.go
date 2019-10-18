@@ -97,9 +97,10 @@ func (db *Database) Save(doc *Document, concurrency ConcurrencyControl) (*Docume
 	if doc.ReadOnly {
 		return nil, ErrDocumentIsNotReadOnly
 	}
-	err := C.CBLError{}
-	saved_doc := C.CBLDatabase_SaveDocument(db.db, doc.doc, C.CBLConcurrencyControl(concurrency), &err)
-	if err.code == 0 {
+	err := (*C.CBLError)(C.malloc(C.sizeof_CBLError))
+	defer C.free(unsafe.Pointer(err))
+	saved_doc := C.CBLDatabase_SaveDocument(db.db, doc.doc, C.CBLConcurrencyControl(concurrency), err)
+	if (*err).code == 0 {
 		doc.doc = saved_doc
 		return doc, nil
 	}
@@ -117,13 +118,14 @@ func (db *Database) Save(doc *Document, concurrency ConcurrencyControl) (*Docume
 //                         CBLConcurrencyControl concurrency,
 //                         CBLError* error) CBLAPI;
 func (db *Database) DeleteDocument(doc *Document, concurrency ConcurrencyControl) error {
-	err := C.CBLError{}
-	result := bool(C.CBLDocument_Delete(doc.doc, C.CBLConcurrencyControl(concurrency), &err))
-	if result && err.code == 0{
+	err := (*C.CBLError)(C.malloc(C.sizeof_CBLError))
+	defer C.free(unsafe.Pointer(err))
+	result := bool(C.CBLDocument_Delete(doc.doc, C.CBLConcurrencyControl(concurrency), err))
+	if result && (*err).code == 0{
 		C.free(unsafe.Pointer(doc.doc))
 		return nil
 	}
-	ErrCBLInternalError = fmt.Errorf("CBL: Problem Deleting Document. Domain: %d Code: %d", err.domain, err.code)
+	ErrCBLInternalError = fmt.Errorf("CBL: Problem Deleting Document. Domain: %d Code: %d", (*err).domain, (*err).code)
 	return ErrCBLInternalError
 }
 
@@ -139,13 +141,14 @@ func (db *Database) DeleteDocument(doc *Document, concurrency ConcurrencyControl
 // bool CBLDocument_Purge(const CBLDocument* document _cbl_nonnull,
 //                        CBLError* error) CBLAPI;
 func (db *Database) Purge(doc *Document) error {
-	err := C.CBLError{}
-	result := bool(C.CBLDocument_Purge(doc.doc, &err))
-	if result && err.code == 0{
+	err := (*C.CBLError)(C.malloc(C.sizeof_CBLError))
+	defer C.free(unsafe.Pointer(err))
+	result := bool(C.CBLDocument_Purge(doc.doc, err))
+	if result && (*err).code == 0{
 		C.free(unsafe.Pointer(doc.doc))
 		return nil
 	}
-	ErrCBLInternalError = fmt.Errorf("CBL: Problem Purging Document. Domain: %d Code: %d", err.domain, err.code)
+	ErrCBLInternalError = fmt.Errorf("CBL: Problem Purging Document. Domain: %d Code: %d", (*err).domain, (*err).code)
 	return ErrCBLInternalError
 }
 
@@ -161,14 +164,15 @@ func (db *Database) Purge(doc *Document) error {
 //                                   const char* docID _cbl_nonnull,
 //                                   CBLError* error) CBLAPI;
 func (db *Database) PurgeById(docId string) error {
-	err := C.CBLError{}
+	err := (*C.CBLError)(C.malloc(C.sizeof_CBLError))
+	defer C.free(unsafe.Pointer(err))
 	c_docId := C.CString(docId)
-	result := bool(C.CBLDatabase_PurgeDocumentByID(db.db, c_docId, &err))
-	if result && err.code == 0{
+	result := bool(C.CBLDatabase_PurgeDocumentByID(db.db, c_docId, err))
+	if result && (*err).code == 0{
 		C.free(unsafe.Pointer(c_docId))
 		return nil
 	}
-	ErrCBLInternalError = fmt.Errorf("CBL: Problem Purging Document. Domain: %d Code: %d", err.domain, err.code)
+	ErrCBLInternalError = fmt.Errorf("CBL: Problem Purging Document. Domain: %d Code: %d", (*err).domain, (*err).code)
 	return ErrCBLInternalError
 }
 
@@ -409,10 +413,11 @@ func syncMapToUnderlyingDict(doc *Document) bool {
                                     //  const char *json _cbl_nonnull,
 									//  CBLError*) CBLAPI;
 func (doc *Document) SetPropertiesAsJSON(json string) bool {
-	err := C.CBLError{}
+	err := (*C.CBLError)(C.malloc(C.sizeof_CBLError))
+	defer C.free(unsafe.Pointer(err))
 	c_json := C.CString(json)
-	result := bool(C.CBLDocument_SetPropertiesAsJSON(doc.doc, c_json, &err))
-	if result && err.code == 0 {
+	result := bool(C.CBLDocument_SetPropertiesAsJSON(doc.doc, c_json, err))
+	if result && (*err).code == 0 {
 		C.free(unsafe.Pointer(c_json))
 		documentProperties(doc)
 		return result
@@ -433,13 +438,14 @@ func (doc *Document) SetPropertiesAsJSON(json string) bool {
 //                                                const char *docID _cbl_nonnull,
 //                                                CBLError* error) CBLAPI;
 func (db *Database) GetDocumentExpiration(docId string) (int64, error) {
-	err := C.CBLError{}
+	err := (*C.CBLError)(C.malloc(C.sizeof_CBLError))
+	defer C.free(unsafe.Pointer(err))
 	c_docId := C.CString(docId)
-	timestamp := C.CBLDatabase_GetDocumentExpiration(db.db, c_docId, &err)
-	if err.code == 0 {
+	timestamp := C.CBLDatabase_GetDocumentExpiration(db.db, c_docId, err)
+	if (*err).code == 0 {
 		return int64(timestamp), nil
 	}
-	ErrCBLInternalError = fmt.Errorf("CBL: Problem Retrieving Document Timestamp. Domain: %d Code: %d", err.domain, err.code)
+	ErrCBLInternalError = fmt.Errorf("CBL: Problem Retrieving Document Timestamp. Domain: %d Code: %d", (*err).domain, (*err).code)
 	return -1, ErrCBLInternalError
 }
 /** Sets or clears the expiration time of a document.
@@ -458,10 +464,11 @@ func (db *Database) GetDocumentExpiration(docId string) (int64, error) {
 
 /** @} */
 func (db *Database) SetDocumentExpiration(docId string, timestamp int64) bool {
-	err := C.CBLError{}
+	err := (*C.CBLError)(C.malloc(C.sizeof_CBLError))
+	defer C.free(unsafe.Pointer(err))
 	c_docId := C.CString(docId)
-	result := bool(C.CBLDatabase_SetDocumentExpiration(db.db, c_docId, C.CBLTimestamp(timestamp), &err))
-	if result && err.code == 0 {
+	result := bool(C.CBLDatabase_SetDocumentExpiration(db.db, c_docId, C.CBLTimestamp(timestamp), err))
+	if result && (*err).code == 0 {
 		C.free(unsafe.Pointer(c_docId))
 		return result
 	}

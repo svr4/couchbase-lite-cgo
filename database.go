@@ -19,6 +19,7 @@ void notificationReadyCallback(void *context, CBLDatabase* db _cbl_nonnull) {
 import "C"
 import "unsafe"
 import "context"
+import "fmt"
 
 type EncryptionAlgorithm uint32
 type DatabaseFlags uint32
@@ -107,13 +108,14 @@ func CopyDatabase(fromPath, toName string, config *DatabaseConfiguration) bool {
 
 	encryption_key := C.CBLEncryptionKey{C.uint32_t(config.encryptionKey.algorithm), key_data}
 	c_config := C.CBLDatabaseConfiguration{c_dir, C.uint32_t(config.flags), encryption_key}
-	err := C.CBLError{}
+	err := (*C.CBLError)(C.malloc(C.sizeof_CBLError))
 
-	result := C.CBL_CopyDatabase(c_fromPath, c_toName, &c_config, &err)
+	result := C.CBL_CopyDatabase(c_fromPath, c_toName, &c_config, err)
 
 	C.free(unsafe.Pointer(c_fromPath))
 	C.free(unsafe.Pointer(c_toName))
 	C.free(unsafe.Pointer(c_dir))
+	C.free(unsafe.Pointer(err))
 
 	return bool(result)
 }
@@ -134,11 +136,13 @@ func DeleteDatabase(name, inDirectory string) bool {
 
 	c_name := C.CString(name)
 	c_inDirectory := C.CString(inDirectory)
-	err := C.CBLError{}
+	err := (*C.CBLError)(C.malloc(C.sizeof_CBLError))
 
-	result := C.CBL_DeleteDatabase(c_name, c_inDirectory, &err)
+
+	result := C.CBL_DeleteDatabase(c_name, c_inDirectory, err)
 	C.free(unsafe.Pointer(c_name))
 	C.free(unsafe.Pointer(c_inDirectory))
+	C.free(unsafe.Pointer(err))
 	return bool(result)
 }
 
@@ -161,10 +165,10 @@ func DeleteDatabase(name, inDirectory string) bool {
 	// 							  const CBLDatabaseConfiguration* config,
 	// 							  CBLError* error) CBLAPI;
 
-func Open(name string, config *DatabaseConfiguration) *Database {
+func Open(name string, config *DatabaseConfiguration) (*Database, error) {
 
 	c_name := C.CString(name)
-
+	defer C.free(unsafe.Pointer(c_name))
 	// Convert to C array
 	var key_data [32]C.uint8_t
 	for i:=0; i < len(config.encryptionKey.bytes); i++ {
@@ -173,33 +177,40 @@ func Open(name string, config *DatabaseConfiguration) *Database {
 	// Create C key
 	c_key := C.CBLEncryptionKey{C.uint32_t(config.encryptionKey.algorithm), key_data}
 	// Create C config
-	c_config := C.CBLDatabaseConfiguration{C.CString(config.directory), C.uint32_t(config.flags), c_key}
-	err := C.CBLError{}
+	c_config := (*C.CBLDatabaseConfiguration)(C.malloc(C.sizeof_CBLDatabaseConfiguration))
+
+	c_dir := C.CString(config.directory)
+	defer C.free(unsafe.Pointer(c_dir))
+
+	c_config.directory = c_dir
+	c_config.flags = C.uint32_t(config.flags)
+	c_config.encryptionKey = c_key
+	
+	err := (*C.CBLError)(C.malloc(C.sizeof_CBLError))
+	defer C.free(unsafe.Pointer(err))
 
 	// Open Database
-	c_db := C.CBLDatabase_Open(c_name, &c_config, &err)
+	c_db := C.CBLDatabase_Open(c_name, c_config, err)
 
-	database := Database{}
-	database.db = c_db
-	database.config = &c_config
-	database.name = name
+	if (*err).code == 0 {
+		database := Database{}
+		database.db = c_db
+		database.config = c_config
+		database.name = name
+		return &database, nil
+	}
 
-	// Setup listener maps
-	// database.databaseChangeListeners = make(map[string]DatabaseChangeListener)
-	// database.listenerTokens = make(map[string]*C.CBLListenerToken)
-	// database.pullFilterCallbacks = make(map[string]ReplicationFilter)
-	// database.pushFilterCallbacks = make(map[string]ReplicationFilter)
-
-	C.free(unsafe.Pointer(c_name))
-	return &database
+	ErrCBLInternalError = fmt.Errorf("CBL: Problem Opening Database. Domain: %d Code: %d", (*err).domain, (*err).code)
+	return nil, ErrCBLInternalError
 }
 
 
 /** Closes an open database. */
 // bool CBLDatabase_Close(CBLDatabase*, CBLError*) CBLAPI;
 func (db *Database) Close() bool {
-	err := C.CBLError{}
-	result := C.CBLDatabase_Close(db.db, &err)
+	err := (*C.CBLError)(C.malloc(C.sizeof_CBLError))
+	defer C.free(unsafe.Pointer(err))
+	result := C.CBLDatabase_Close(db.db, err)
 	C.free(unsafe.Pointer(db.config))
 	return bool(result)
 }
@@ -209,9 +220,10 @@ func (db *Database) Close() bool {
 	an error is returned. */
 // bool CBLDatabase_Delete(CBLDatabase* _cbl_nonnull, CBLError*) CBLAPI;
 func (db *Database) Delete() bool {
-	err := C.CBLError{}
-	result := C.CBLDatabase_Delete(db.db, &err)
-	if err.code == 0 {
+	err := (*C.CBLError)(C.malloc(C.sizeof_CBLError))
+	defer C.free(unsafe.Pointer(err))
+	result := C.CBLDatabase_Delete(db.db, err)
+	if (*err).code == 0 {
 		return bool(result)
 	}
 	return false
@@ -220,9 +232,10 @@ func (db *Database) Delete() bool {
 /** Compacts a database file. */
 // bool CBLDatabase_Compact(CBLDatabase* _cbl_nonnull, CBLError*) CBLAPI;
 func (db *Database) Compact() bool {
-	err := C.CBLError{}
-	result := C.CBLDatabase_Compact(db.db, &err)
-	if err.code == 0 {
+	err := (*C.CBLError)(C.malloc(C.sizeof_CBLError))
+	defer C.free(unsafe.Pointer(err))
+	result := C.CBLDatabase_Compact(db.db, err)
+	if (*err).code == 0 {
 		return bool(result)
 	}
 	return false
@@ -236,9 +249,10 @@ func (db *Database) Compact() bool {
 	@note  Batch operations can nest. Changes are not committed until the outer batch ends. */
 // bool CBLDatabase_BeginBatch(CBLDatabase* _cbl_nonnull, CBLError*) CBLAPI;
 func (db *Database) BeginBatch() bool {
-	err := C.CBLError{}
-	result := C.CBLDatabase_BeginBatch(db.db, &err)
-	if err.code == 0 {
+	err := (*C.CBLError)(C.malloc(C.sizeof_CBLError))
+	defer C.free(unsafe.Pointer(err))
+	result := C.CBLDatabase_BeginBatch(db.db, err)
+	if (*err).code == 0 {
 		return bool(result)
 	}
 	return false
@@ -247,9 +261,10 @@ func (db *Database) BeginBatch() bool {
 /** Ends a batch operation. This **must** be called after \ref CBLDatabase_BeginBatch. */
 // bool CBLDatabase_EndBatch(CBLDatabase* _cbl_nonnull, CBLError*) CBLAPI;
 func (db *Database) EndBatch() bool {
-	err := C.CBLError{}
-	result := C.CBLDatabase_EndBatch(db.db, &err)
-	if err.code == 0 {
+	err := (*C.CBLError)(C.malloc(C.sizeof_CBLError))
+	defer C.free(unsafe.Pointer(err))
+	result := C.CBLDatabase_EndBatch(db.db, err)
+	if (*err).code == 0 {
 		return bool(result)
 	}
 	return false
@@ -274,9 +289,10 @@ func (db *Database) NextDocExpiration() int64 {
 // int64_t CBLDatabase_PurgeExpiredDocuments(CBLDatabase* db _cbl_nonnull,
 // 										  CBLError* error) CBLAPI;
 func (db *Database) PurgeExpiredDocuments() int64 {
-	err := C.CBLError{}
-	result := C.CBLDatabase_PurgeExpiredDocuments(db.db, &err)
-	if err.code == 0 {
+	err := (*C.CBLError)(C.malloc(C.sizeof_CBLError))
+	defer C.free(unsafe.Pointer(err))
+	result := C.CBLDatabase_PurgeExpiredDocuments(db.db, err)
+	if (*err).code == 0 {
 		return int64(result)
 	}
 	return -1

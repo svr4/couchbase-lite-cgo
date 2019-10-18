@@ -116,9 +116,10 @@ func getBlobPoperties(blob *C.CBLBlob) C.FLDict {
 	 @warning  This can potentially allocate a very large heap block! */
 //  FLSliceResult CBLBlob_LoadContent(const CBLBlob* _cbl_nonnull, CBLError *outError) CBLAPI;
 func blobLoadContent(blob *C.CBLBlob) C.FLSliceResult {
-	err := C.CBLError{}
-	result := C.CBLBlob_LoadContent(blob, &err)
-	if err.code == 0 {
+	err := (*C.CBLError)(C.malloc(C.sizeof_CBLError))
+	defer C.free(unsafe.Pointer(err))
+	result := C.CBLBlob_LoadContent(blob, err)
+	if (*err).code == 0 {
 		return result
 	}
 	return C.FLSliceResult{}
@@ -133,9 +134,10 @@ type BlobReadStream struct {
  /** Opens a stream for reading a blob's content. */
 //  CBLBlobReadStream* CBLBlob_OpenContentStream(const CBLBlob* _cbl_nonnull, CBLError *outError) CBLAPI;
 func (blob *Blob) NewReadStream() *BlobReadStream {
-	err := C.CBLError{}
-	brs := C.CBLBlob_OpenContentStream(blob.blob, &err)
-	if err.code == 0 {
+	err := (*C.CBLError)(C.malloc(C.sizeof_CBLError))
+	defer C.free(unsafe.Pointer(err))
+	brs := C.CBLBlob_OpenContentStream(blob.blob, err)
+	if (*err).code == 0 {
 		rs := BlobReadStream{brs}
 		return &rs
 	}
@@ -153,18 +155,19 @@ func (blob *Blob) NewReadStream() *BlobReadStream {
 // 						size_t maxLength,
 // 						CBLError *outError) CBLAPI;
 func (blob *Blob) Read(res *BlobReadStream, dst []byte) (int, error) {
-	err := C.CBLError{}
+	err := (*C.CBLError)(C.malloc(C.sizeof_CBLError))
+	defer C.free(unsafe.Pointer(err))
 	maxLength := len(dst)
 	c_dst := C.CBytes(dst)
-	bytesRead := C.CBLBlobReader_Read(res.rs, c_dst, C.size_t(maxLength), &err)
-	if err.code == 0 {
+	bytesRead := C.CBLBlobReader_Read(res.rs, c_dst, C.size_t(maxLength), err)
+	if (*err).code == 0 {
 		readData := C.GoBytes(c_dst, bytesRead)
 		copy(dst, readData)
 		C.free(c_dst)
 		return int(bytesRead), nil
 	}
 	C.free(c_dst)
-	ErrCBLInternalError = fmt.Errorf("CBL: Problem Reading Blob. Domain: %d Code: %d", err.domain, err.code)
+	ErrCBLInternalError = fmt.Errorf("CBL: Problem Reading Blob. Domain: %d Code: %d", (*err).domain, (*err).code)
 	return -1, ErrCBLInternalError
 }
  /** Closes a CBLBlobReadStream. */
@@ -214,13 +217,14 @@ type BlobWriteStream struct {
 //  CBLBlobWriteStream* CBLBlobWriter_New(CBLDatabase *db _cbl_nonnull,
 // 									   CBLError *outError) CBLAPI;
 func (db *Database) NewBlobWriter() (*BlobWriteStream, error) {
-	err := C.CBLError{}
-	c_wrs := C.CBLBlobWriter_New(db.db, &err)
-	if err.code == 0 {
+	err := (*C.CBLError)(C.malloc(C.sizeof_CBLError))
+	defer C.free(unsafe.Pointer(err))
+	c_wrs := C.CBLBlobWriter_New(db.db, err)
+	if (*err).code == 0 {
 		bwrs := BlobWriteStream{c_wrs}
 		return &bwrs, nil
 	}
-	ErrCBLInternalError = fmt.Errorf("CBL: Error Creating New Blob Writer. Domain: %d Code: %d", err.domain, err.code)
+	ErrCBLInternalError = fmt.Errorf("CBL: Error Creating New Blob Writer. Domain: %d Code: %d", (*err).domain, (*err).code)
 	return nil, ErrCBLInternalError
 }
 
@@ -242,11 +246,12 @@ func (db *Database) CloseBlobWriter(bwrs *BlobWriteStream) {
 // 						   size_t length,
 // 						   CBLError *outError) CBLAPI;
 func (blob *Blob) Write(bwrs *BlobWriteStream, data []byte) bool {
-	err := C.CBLError{}
+	err := (*C.CBLError)(C.malloc(C.sizeof_CBLError))
+	defer C.free(unsafe.Pointer(err))
 	length := C.size_t(len(data))
 	c_data := C.CBytes(data)
-	result := bool(C.CBLBlobWriter_Write(bwrs.wrs, c_data, length, &err))
-	if result && err.code == 0 {
+	result := bool(C.CBLBlobWriter_Write(bwrs.wrs, c_data, length, err))
+	if result && (*err).code == 0 {
 		copy(data, C.GoBytes(c_data, C.int(length)))
 		return result
 	}

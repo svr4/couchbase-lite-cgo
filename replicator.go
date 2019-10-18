@@ -177,7 +177,8 @@ type Replicator struct {
 // CBLReplicator* CBLReplicator_New(const CBLReplicatorConfiguration* _cbl_nonnull,
 //                                  CBLError*) CBLAPI;
 func NewReplicator(config ReplicatorConfiguration) (*Replicator, error) {
-	err := C.CBLError{}
+	err := (*C.CBLError)(C.malloc(C.sizeof_CBLError))
+	defer C.free(unsafe.Pointer(err))
 	c_config := C.CBLReplicatorConfiguration{}
 
 	c_config.database = config.Db.db
@@ -228,13 +229,13 @@ func NewReplicator(config ReplicatorConfiguration) (*Replicator, error) {
 	config.FilterContext = context.WithValue(config.FilterContext, pullCallback, config.PullFilter)
 	c_config.filterContext = unsafe.Pointer(&config.FilterContext)
 
-	c_replicator := C.CBLReplicator_New(&c_config, &err)
-	if err.code == 0 {
+	c_replicator := C.CBLReplicator_New(&c_config, err)
+	if (*err).code == 0 {
 		replicator := Replicator{c_replicator}
 		return &replicator, nil
 	}
 
-	ErrCBLInternalError = fmt.Errorf("CBL: Problem Creating New Replicator. Domain: %d Code: %d", err.domain, err.code)
+	ErrCBLInternalError = fmt.Errorf("CBL: Problem Creating New Replicator. Domain: %d Code: %d", (*err).domain, (*err).code)
 	return nil, ErrCBLInternalError
 }
 
