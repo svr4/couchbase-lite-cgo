@@ -99,7 +99,9 @@ func NewBasicAuthentication(username, password string) *Authenticator {
 //                                      const char *cookieName) CBLAPI;
 func NewAuthSession(sessionId, cookieName string) (*Authenticator, error) {
 	c_sess := C.CString(sessionId)
+	defer C.free(unsafe.Pointer(c_sess))
 	c_cookie := C.CString(cookieName)
+	defer C.free(unsafe.Pointer(c_cookie))
 	c_auth := C.CBLAuth_NewSession(c_sess, c_cookie)
 	auth := Authenticator{c_auth}
 	return &auth, nil
@@ -179,7 +181,7 @@ type Replicator struct {
 func NewReplicator(config ReplicatorConfiguration) (*Replicator, error) {
 	err := (*C.CBLError)(C.malloc(C.sizeof_CBLError))
 	defer C.free(unsafe.Pointer(err))
-	c_config := C.CBLReplicatorConfiguration{}
+	c_config := (*C.CBLReplicatorConfiguration)(C.malloc(C.sizeof_CBLReplicatorConfiguration))
 
 	c_config.database = config.Db.db
 	c_config.endpoint = config.Endpt.endpoint
@@ -229,7 +231,7 @@ func NewReplicator(config ReplicatorConfiguration) (*Replicator, error) {
 	config.FilterContext = context.WithValue(config.FilterContext, pullCallback, config.PullFilter)
 	c_config.filterContext = unsafe.Pointer(&config.FilterContext)
 
-	c_replicator := C.CBLReplicator_New(&c_config, err)
+	c_replicator := C.CBLReplicator_New(c_config, err)
 	if (*err).code == 0 {
 		replicator := Replicator{c_replicator}
 		return &replicator, nil

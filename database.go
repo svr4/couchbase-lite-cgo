@@ -107,10 +107,15 @@ func CopyDatabase(fromPath, toName string, config *DatabaseConfiguration) bool {
 	}
 
 	encryption_key := C.CBLEncryptionKey{C.uint32_t(config.encryptionKey.algorithm), key_data}
-	c_config := C.CBLDatabaseConfiguration{c_dir, C.uint32_t(config.flags), encryption_key}
+
+	c_config := (*C.CBLDatabaseConfiguration)(C.malloc(C.sizeof_CBLDatabaseConfiguration))
+	c_config.directory = c_dir
+	c_config.flags = C.uint32_t(config.flags)
+	c_config.encryptionKey = encryption_key
+	
 	err := (*C.CBLError)(C.malloc(C.sizeof_CBLError))
 
-	result := C.CBL_CopyDatabase(c_fromPath, c_toName, &c_config, err)
+	result := C.CBL_CopyDatabase(c_fromPath, c_toName, c_config, err)
 
 	C.free(unsafe.Pointer(c_fromPath))
 	C.free(unsafe.Pointer(c_toName))

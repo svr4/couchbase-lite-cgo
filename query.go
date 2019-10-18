@@ -77,7 +77,8 @@ type ResultSet struct {
 func (db *Database) NewQuery(language QueryLanguage, queryString string) (*Query, error) {
 	err := (*C.CBLError)(C.malloc(C.sizeof_CBLError))
 	defer C.free(unsafe.Pointer(err))
-	var outErrorPos *C.int
+  outErrorPos := (*C.int)(C.malloc(C.sizeof_int))
+  defer C.free(unsafe.Pointer(outErrorPos))
 	c_query_str := C.CString(queryString)
 	c_query := C.CBLQuery_New(db.db, C.CBLQueryLanguage(language), c_query_str, outErrorPos, err)
 	C.free(unsafe.Pointer(c_query_str))
