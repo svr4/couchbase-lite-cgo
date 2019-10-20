@@ -18,6 +18,7 @@ void gatewayReplicatedDocumentCallback(void *context, CBLReplicator *replicator 
 
 FLValue FLArray_AsValue(FLArray);
 FLValue FLDict_AsValue(FLDict);
+bool is_Null(void *);
 
 */
 import "C"
@@ -222,8 +223,8 @@ func storeGoValueInSlot(fl_slot C.FLSlot, v interface{}) error {
 		}
 		fl_arr := C.FLMutableArray_GetSource(mutable_array)
 		C.FLSlot_SetValue(fl_slot, C.FLArray_AsValue(fl_arr))
-		C.FLArray_Release(fl_arr)
-		C.FLMutableArray_Release(mutable_array)
+		// C.FLArray_Release(fl_arr)
+		// C.FLMutableArray_Release(mutable_array)
 		break
 	case reflect.Int:
 		value := v.(int)
@@ -297,8 +298,8 @@ func storeGoValueInSlot(fl_slot C.FLSlot, v interface{}) error {
 
 			fl_dict := C.FLMutableDict_GetSource(mutable_dict)
 			C.FLSlot_SetValue(fl_slot, C.FLDict_AsValue(fl_dict))
-			C.FLDict_Release(fl_dict)
-			C.FLMutableDict_Release(mutable_dict)
+			// C.FLDict_Release(fl_dict)
+			// C.FLMutableDict_Release(mutable_dict)
 			break
 		default:
 			return ErrUnsupportedGoType

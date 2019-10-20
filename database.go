@@ -31,8 +31,8 @@ const (
 
 /** Flags for how to open a database. */
 const (
-	Database_Create DatabaseFlags = (2 ^ iota) ///< Create the file if it doesn't exist
-	Databse_ReadOnly ///< Open file read-only
+	Database_Create DatabaseFlags = 1 << iota ///< Create the file if it doesn't exist
+	Database_ReadOnly ///< Open file read-only
 	Database_NoUpgrade ///< Disable upgrading an older-version database
 )
 

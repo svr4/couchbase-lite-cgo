@@ -25,6 +25,13 @@ FLValue FLDict_AsValue(FLDict dict) {
 	return NULL;
 }
 
+bool is_Null(void * data) {
+	if(data == NULL)
+		return true;
+	else
+		return false;
+}
+
 */
 import "C"
 import "unsafe"
@@ -40,7 +47,7 @@ type Document struct {
 	doc *C.CBLDocument
 	ReadOnly bool
 	Props map[string]interface{}
-	Keys []string
+	keys []string
 }
 
 /** \name  Document lifecycle
@@ -51,9 +58,9 @@ type ConcurrencyControl uint8
 
 const (
 	/** The current save/delete will overwrite a conflicting revision if there is a conflict. */
-	ConcurrencyControlLastWriteWins ConcurrencyControl = iota
+	LastWriteWins ConcurrencyControl = iota
 	/** The current save/delete will fail if there is a conflict. */
-	ConcurrencyControlFailOnConflict
+	FailOnConflict
 )
 
 
@@ -97,14 +104,23 @@ func (db *Database) Save(doc *Document, concurrency ConcurrencyControl) (*Docume
 	if doc.ReadOnly {
 		return nil, ErrDocumentIsNotReadOnly
 	}
+	if !syncMapToUnderlyingDict(doc) {
+		return nil, ErrProblemSavingDocument
+	}
 	err := (*C.CBLError)(C.malloc(C.sizeof_CBLError))
 	defer C.free(unsafe.Pointer(err))
+
 	saved_doc := C.CBLDatabase_SaveDocument(db.db, doc.doc, C.CBLConcurrencyControl(concurrency), err)
-	if (*err).code == 0 {
+
+	if !bool(C.is_Null(unsafe.Pointer(saved_doc))) {
 		doc.doc = saved_doc
+		documentProperties(doc)
 		return doc, nil
 	}
-	return nil, ErrProblemSavingDocument
+	c_err_msg := C.CBLError_Message(err)
+	ErrCBLInternalError = fmt.Errorf("CBL: %s. Domain: %d Code: %d", C.GoString(c_err_msg), (*err).domain, (*err).code)
+	C.free(unsafe.Pointer(c_err_msg))
+	return nil, ErrCBLInternalError
 }
 
 
@@ -120,12 +136,14 @@ func (db *Database) Save(doc *Document, concurrency ConcurrencyControl) (*Docume
 func (db *Database) DeleteDocument(doc *Document, concurrency ConcurrencyControl) error {
 	err := (*C.CBLError)(C.malloc(C.sizeof_CBLError))
 	defer C.free(unsafe.Pointer(err))
-	result := bool(C.CBLDocument_Delete(doc.doc, C.CBLConcurrencyControl(concurrency), err))
-	if result && (*err).code == 0{
+	result := bool(C.CBLDocument_Delete(C.CBLDocument_MutableCopy(doc.doc), C.CBLConcurrencyControl(concurrency), err))
+	if result /*&& (*err).code == 0*/ {
 		C.free(unsafe.Pointer(doc.doc))
 		return nil
 	}
-	ErrCBLInternalError = fmt.Errorf("CBL: Problem Deleting Document. Domain: %d Code: %d", (*err).domain, (*err).code)
+	c_err_msg := C.CBLError_Message(err)
+	ErrCBLInternalError = fmt.Errorf("CBL: %s. Domain: %d Code: %d", C.GoString(c_err_msg), (*err).domain, (*err).code)
+	C.free(unsafe.Pointer(c_err_msg))
 	return ErrCBLInternalError
 }
 
@@ -219,7 +237,7 @@ func NewDocument() *Document {
 	document := Document{}
 	document.doc = doc
 	document.ReadOnly = false
-	document.Keys = make([]string, 0)
+	document.keys = make([]string, 0)
 	document.Props = make(map[string]interface{})
 	return &document
 }
@@ -231,7 +249,7 @@ func NewDocumentWithId(docId string) *Document {
 	document := Document{}
 	document.doc = doc
 	document.ReadOnly = false
-	document.Keys = make([]string, 0)
+	document.keys = make([]string, 0)
 	document.Props = make(map[string]interface{})
 	return &document
 }
@@ -246,7 +264,7 @@ func DocumentMutableCopy(original *Document) *Document {
 	copy := Document{}
 	copy.ReadOnly = false
 	copy.doc = C.CBLDocument_MutableCopy(original.doc)
-	copy.Keys = original.Keys
+	copy.keys = original.keys
 	copy.Props = original.Props
 	return &copy
 }
@@ -287,13 +305,13 @@ func (doc *Document) DocumentSequence() uint64 {
            properties, call \ref FLDict_MutableCopy to make a deep copy. */
 // FLDict CBLDocument_Properties(const CBLDocument* _cbl_nonnull) CBLAPI;
 func documentProperties(doc *Document) error {
-	if !doc.ReadOnly {
-		return ErrDocumentIsNotReadOnly
-	}
+	// if !doc.ReadOnly {
+	// 	return ErrDocumentIsNotReadOnly
+	// }
 	var err error
 	fl_dict := C.CBLDocument_Properties(doc.doc)
 	// Got the props, now I need to move them to the Props property
-	doc.Keys = getDocumentKeys(doc)
+	doc.keys = getDocumentKeys(doc)
 	doc.Props, err = getKeyValuePropMap(fl_dict)
 	if err != nil {
 		return err
@@ -308,44 +326,46 @@ func getDocumentKeys(doc *Document) []string {
 
 func getKeyValuePropMap(fl_dict C.FLDict) (map[string]interface{}, error) {
 
-	iter := C.FLDictIterator{}
-	C.FLDictIterator_Begin(fl_dict, &iter)
+	// iter := C.FLDictIterator{}
+	iter := (*C.FLDictIterator)(C.malloc(C.sizeof_FLDictIterator))
+	C.FLDictIterator_Begin(fl_dict, iter)
 	var value C.FLValue
 
 	props := make(map[string]interface{})
-
-	for value = C.FLDictIterator_GetValue(&iter); value != nil; value = C.FLDictIterator_GetValue(&iter) {
+	
+	for value = C.FLDictIterator_GetValue(iter); value != nil; value = C.FLDictIterator_GetValue(iter) {
 		// FLString
-		key := C.FLDictIterator_GetKeyString(&iter)
+		key := C.FLDictIterator_GetKeyString(iter)
 		str_key := C.GoStringN((*C.char)(key.buf), C.int(key.size))
-		
+
 		i, e := getFLValueToGoValue(value)
 
 		if e == nil {
 			props[str_key] = i
 		}
 
-		C.FLDictIterator_Next(&iter)
+		C.FLDictIterator_Next(iter)
 	}
-
+	C.FLDictIterator_End(iter)
 	return props, nil
 }
 
 func getDocumentKeysHelper(fl_dict C.FLDict) []string {
-	iter := C.FLDictIterator{}
-	C.FLDictIterator_Begin(fl_dict, &iter)
+	// iter := C.FLDictIterator{}
+	iter := (*C.FLDictIterator)(C.malloc(C.sizeof_FLDictIterator))
+	C.FLDictIterator_Begin(fl_dict, iter)
 	var value C.FLValue
 
-	keys := make([]string, int(C.FLDictIterator_GetCount(&iter)))
+	keys := make([]string, int(C.FLDictIterator_GetCount(iter)))
 	i := 0
-	for value = C.FLDictIterator_GetValue(&iter); value != nil; value = C.FLDictIterator_GetValue(&iter) {
+	for value = C.FLDictIterator_GetValue(iter); value != nil; value = C.FLDictIterator_GetValue(iter) {
 		// FLString
-		key := C.FLDictIterator_GetKeyString(&iter);
+		key := C.FLDictIterator_GetKeyString(iter);
 		keys[i] = C.GoStringN((*C.char)(key.buf), C.int(key.size))
 		i++
-		C.FLDictIterator_Next(&iter)
+		C.FLDictIterator_Next(iter)
 	}
-
+	C.FLDictIterator_End(iter)
 	return keys
 }
 
@@ -362,10 +382,8 @@ func getDocumentKeysHelper(fl_dict C.FLDict) []string {
     @note  The dictionary object will be retained by the document. You are responsible for
            releasing your own reference(s) to it. */
 // void CBLDocument_SetProperties(CBLDocument* _cbl_nonnull,
-                            //    FLMutableDict properties _cbl_nonnull) CBLAPI;
-func setProperties(doc *Document) {
-
-}
+							//    FLMutableDict properties _cbl_nonnull) CBLAPI;
+							
 // FLDoc CBLDocument_CreateFleeceDoc(const CBLDocument* _cbl_nonnull) CBLAPI;
 
 /** Returns a document's properties as a null-terminated JSON string.
@@ -400,11 +418,11 @@ func syncMapToUnderlyingDict(doc *Document) bool {
 
 		fl_slot := C.FLMutableDict_Set(mutableDict, C.FLStr(c_key))
 		storeGoValueInSlot(fl_slot, v)
-		C.free(unsafe.Pointer(c_key))
+		//C.free(unsafe.Pointer(c_key))
 	}
 	
 	C.CBLDocument_SetProperties(doc.doc, mutableDict)
-	C.free(unsafe.Pointer(mutableDict))
+	// C.free(unsafe.Pointer(mutableDict))
 	return true
 }
 
