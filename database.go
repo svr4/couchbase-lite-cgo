@@ -476,8 +476,20 @@ func (db *Database) SendNotifications() {
 */
 func (db *Database) RemoveListener(token *ListenerToken) {
 	switch token.callbackType {
+	case "DatabaseChangeListener":
+		delete(dbCallbacks, token.key)
+		break;
 	case "DocumentChangeListener":
 		delete(docCallbacks,token.key)
+		break;
+	case "QueryChangeListener":
+		delete(queryCallbacks, token.key)
+		break;
+	case "ReplicatedDocumentListener":
+		delete(replicatedDocCallbacks, token.key)
+		break;
+	case "ReplicatorChangeListener":
+		delete(replicatorCallbacks, token.key)
 		break;
 	}
 	C.CBLListener_Remove(token.token)

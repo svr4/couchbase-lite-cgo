@@ -267,7 +267,7 @@ func TestDocumentListener(t *testing.T) {
 				if _, e := db.Save(doc, LastWriteWins); e != nil {
 					t.Error(e)
 				}
-				time.Sleep(1 * time.Second)
+				time.Sleep(3 * time.Second)
 				db.RemoveListener(token)
 			}
 		} else {

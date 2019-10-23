@@ -228,6 +228,10 @@ func NewReplicator(config ReplicatorConfiguration) (*Replicator, error) {
 	c_config.pullFilter = (C.CBLReplicationFilter)(C.gatewayPullFilterCallback)
 
 	// The pullCallback and pushCallback keys should already be in the context.
+	pushKey := config.FilterContext.Value(pushCallback).(string)
+	pullKey := config.FilterContext.Value(pullCallback).(string)
+	pushFilterCallbacks[pushKey] = config.PushFilter
+	pullFilterCallbacks[pullKey] = config.PullFilter
 	// Place the context into a mutable dict.
 	dict := storeContextInMutableDict(config.FilterContext, config.FilterKeys)
 	c_config.filterContext = unsafe.Pointer(dict)
@@ -272,6 +276,15 @@ func (rep *Replicator) Start() {
 func (rep *Replicator) Stop() {
 	C.CBLReplicator_Stop(rep.rep)
 }
+
+func RemovePushFilterListener(key string) {
+	delete(pushFilterCallbacks, key)
+}
+
+func RemovePullFilterListener(key string) {
+	delete(pullFilterCallbacks, key)
+}
+
 
 /** @} */
 
