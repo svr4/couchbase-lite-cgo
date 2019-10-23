@@ -25,10 +25,11 @@ import "C"
 import "unsafe"
 import "context"
 import "reflect"
+// import "fmt"
 
 //export databaseListenerBridge
 func databaseListenerBridge(c unsafe.Pointer, db *C.CBLDatabase, numDocs C.unsigned, docIDs **C.char) {
-	ctx := (*context.Context)(c)
+	props, _ := getKeyValuePropMap((C.FLDict)(c))
 	ids := make([]string, numDocs)
 
 	var i, count_docs uint
@@ -40,55 +41,83 @@ func databaseListenerBridge(c unsafe.Pointer, db *C.CBLDatabase, numDocs C.unsig
 	database := Database{}
 	database.db = db
 
-	// v := (*ctx).Value(uuid).(string)
-	// (databaseChangeListeners[v])(*ctx, &database, ids)
-	callback := (*ctx).Value(callback).(DatabaseChangeListener)
-	callback(*ctx, &database, ids)
+	// Place the props in a context to fwd to the callback
+	ctx := context.Background()
+	for k, v := range props {
+		ctx = context.WithValue(ctx, k, v)
+	}
+
+	v := ctx.Value(uuid).(string)
+	(dbCallbacks[v])(ctx, &database, ids)
 }
 //export documentListenerBridge
 func documentListenerBridge(c unsafe.Pointer, db *C.CBLDatabase, c_docID *C.char) {
-	ctx := (*context.Context)(c)
+	// c is now a C.FLMutableDict
+	props, _ := getKeyValuePropMap((C.FLDict)(c))
 	docId := C.GoString(c_docID)
 	database := Database{}
 	database.db = db
 	// v := (*ctx).Value(uuid).(string)
 	// (documentChangeListeners[v])(*ctx, &database, docId)
-	callback := (*ctx).Value(callback).(DocumentChangeListener)
-	callback(*ctx, &database, docId)
+	// callback := (*ctx).Value(callback).(DocumentChangeListener)
+
+	// Place the props in a context to fwd to the callback
+	ctx := context.Background()
+	for k, v := range props {
+		ctx = context.WithValue(ctx, k, v)
+	}
+	// FunctionPointer struct that contains the unsafe.Pointer fn
+	//callback := 
+	//(*callback)(ctx, &database, docId)
+	v := ctx.Value(uuid).(string)
+	(docCallbacks[v])(ctx, &database, docId)
 }
 //export notificationBridge
 func notificationBridge(c unsafe.Pointer, db *C.CBLDatabase) {
-	ctx := (*context.Context)(c)
+	props, _ := getKeyValuePropMap((C.FLDict)(c))
 	d := Database{}
 	d.db = db
-	// notificationCallback(*ctx, &d)
-	callback := (*ctx).Value(callback).(NotificationsReadyCallback)
-	callback(*ctx, &d)
+
+	ctx := context.Background()
+	for k, v := range props {
+		ctx = context.WithValue(ctx, k, v)
+	}
+	notificationCallback(ctx, &d)
 }
 //export queryListenerBride
 func queryListenerBride(c unsafe.Pointer, query *C.CBLQuery) {
-	ctx := (*context.Context)(c)
+	props, _ := getKeyValuePropMap((C.FLDict)(c))
 	q := Query{query}
-	// v := (*ctx).Value(uuid).(string)
-	// (queryChangeListeners[v])(*ctx, &q)
-	callback := (*ctx).Value(callback).(QueryChangeListener)
-	callback(*ctx, &q)
+	ctx := context.Background()
+	for k, v := range props {
+		ctx = context.WithValue(ctx, k, v)
+	}
+	v := ctx.Value(uuid).(string)
+	(queryCallbacks[v])(ctx, &q)
 }
 //export pushFilterBridge
 func pushFilterBridge(c unsafe.Pointer, doc *C.CBLDocument, isDeleted C.bool) {
-	ctx := (*context.Context)(c)
+	props, _ := getKeyValuePropMap((C.FLDict)(c))
 	d := Document{}
 	d.doc = doc
-	callback := (*ctx).Value(pushCallback).(ReplicationFilter)
-	callback(*ctx, &d, bool(isDeleted))
+	ctx := context.Background()
+	for k, v := range props {
+		ctx = context.WithValue(ctx, k, v)
+	}
+	v := ctx.Value(pushCallback).(string)
+	(pushFilterCallbacks[v])(ctx, &d, bool(isDeleted))
 }
 //export pullFilterBridge
 func pullFilterBridge(c unsafe.Pointer, doc *C.CBLDocument, isDeleted C.bool) {
-	ctx := (*context.Context)(c)
+	props, _ := getKeyValuePropMap((C.FLDict)(c))
 	d := Document{}
 	d.doc = doc
-	callback := (*ctx).Value(pullCallback).(ReplicationFilter)
-	callback(*ctx, &d, bool(isDeleted))
+	ctx := context.Background()
+	for k, v := range props {
+		ctx = context.WithValue(ctx, k, v)
+	}
+	v := ctx.Value(pullCallback).(string)
+	(pullFilterCallbacks[v])(ctx, &d, bool(isDeleted))
 }
 //export replicatorChangeBridge
 func replicatorChangeBridge(c unsafe.Pointer, replicator *C.CBLReplicator, status *C.CBLReplicatorStatus) {
@@ -149,6 +178,7 @@ func getFLValueToGoValue(fl_val C.FLValue) (interface{}, error) {
 		case C.kFLData:
 			fl_data_slice := C.FLValue_AsData(fl_val)
 			val = C.GoBytes(fl_data_slice.buf, C.int(fl_data_slice.size))
+			//val = FunctionPointer{unsafe.Pointer(fl_data_slice.buf)}
 			return val, nil
 		case C.kFLArray:
 			// This could be a homogenous array or a hetero one.
@@ -308,4 +338,19 @@ func storeGoValueInSlot(fl_slot C.FLSlot, v interface{}) error {
 		return ErrUnsupportedGoType
 	}
 	return nil
+}
+
+func storeContextInMutableDict(ctx context.Context, keys []string) C.FLMutableDict {
+	mutableDict := C.FLMutableDict_New()
+
+	for i:=0; i < len(keys); i++ {
+		//fmt.Println(keys[i])
+		//fmt.Println(reflect.TypeOf(ctx.Value(keys[i])).Kind())
+		c_key := C.CString(keys[i])
+		fl_slot := C.FLMutableDict_Set(mutableDict, C.FLStr(c_key))
+		storeGoValueInSlot(fl_slot, ctx.Value(keys[i]))
+		//C.free(unsafe.Pointer(c_key))
+	}
+
+	return mutableDict
 }

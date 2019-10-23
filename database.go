@@ -43,8 +43,19 @@ type Database struct {
 }
 
 type ListenerToken struct {
+	key string
 	token *C.CBLListenerToken
+	callbackType string
 }
+
+var dbCallbacks map[string]DatabaseChangeListener = make(map[string]DatabaseChangeListener)
+var docCallbacks map[string]DocumentChangeListener = make(map[string]DocumentChangeListener)
+var queryCallbacks map[string]QueryChangeListener = make(map[string]QueryChangeListener)
+var pushFilterCallbacks map[string]ReplicationFilter = make(map[string]ReplicationFilter)
+var pullFilterCallbacks map[string]ReplicationFilter = make(map[string]ReplicationFilter)
+var replicatedDocCallbacks map[string]ReplicatedDocumentListener = make(map[string]ReplicatedDocumentListener)
+var replicatorCallbacks map[string]ReplicatorChangeListener = make(map[string]ReplicatorChangeListener)
+var notificationCallback NotificationsReadyCallback
 
 
 var uuid string = "UUID"
@@ -390,11 +401,20 @@ listener.*/
 // CBLListenerToken* CBLDatabase_AddChangeListener(const CBLDatabase* db _cbl_nonnull,
 // 		  CBLDatabaseChangeListener listener _cbl_nonnull,
 // 		  void *context) CBLAPI;
-func (db *Database) AddDatabaseChangeListener(listener DatabaseChangeListener, ctx context.Context) *ListenerToken {
-	ctx = context.WithValue(ctx, callback, listener)
-	token := C.CBLDatabase_AddChangeListener(db.db, (C.CBLDatabaseChangeListener)(C.gatewayDatabaseChangeGoCallback), unsafe.Pointer(&ctx))
-	listener_token := ListenerToken{token}
-	return &listener_token
+func (db *Database) AddDatabaseChangeListener(listener DatabaseChangeListener, ctx context.Context, ctxKeys []string) (*ListenerToken, error) {
+	if v := ctx.Value(uuid); v != nil {
+		key, ok := v.(string)
+		if ok {
+			dbCallbacks[key] = listener
+			mutableDictContext := storeContextInMutableDict(ctx, ctxKeys)
+			token := C.CBLDatabase_AddChangeListener(db.db, (C.CBLDatabaseChangeListener)(C.gatewayDatabaseChangeGoCallback),
+													unsafe.Pointer(mutableDictContext))			
+			listener_token := ListenerToken{key,token,"DatabaseChangeListener"}
+			return &listener_token, nil
+		}
+	}
+	ErrCBLInternalError = fmt.Errorf("CBL: No UUID present in context.")
+	return nil, ErrCBLInternalError
 }
 /** @} */
 /** @} */    // end of outer \defgroup
@@ -437,11 +457,11 @@ called immediately; your \ref CBLNotificationsReadyCallback will be called inste
 // void CBLDatabase_BufferNotifications(CBLDatabase *db _cbl_nonnull,
 // 	   CBLNotificationsReadyCallback callback _cbl_nonnull,
 // 	   void *context) CBLAPI;
-func (db *Database) DatabaseBufferNotifications(callback NotificationsReadyCallback, ctx context.Context) {
-	ctx = context.WithValue(ctx, callback, callback)
-	C.CBLDatabase_BufferNotifications(db.db, 
-		(C.CBLNotificationsReadyCallback)(C.notificationReadyCallback),
-		unsafe.Pointer(&ctx))
+func (db *Database) DatabaseBufferNotifications(callback NotificationsReadyCallback, ctx context.Context, ctxKeys []string) {
+	notificationCallback = callback
+	mutableDictContext := storeContextInMutableDict(ctx, ctxKeys)
+	C.CBLDatabase_BufferNotifications(db.db, (C.CBLNotificationsReadyCallback)(C.notificationReadyCallback),
+									unsafe.Pointer(mutableDictContext))
 }
 
 /** Immediately issues all pending notifications for this database, by calling their listener
@@ -454,8 +474,15 @@ func (db *Database) SendNotifications() {
 /*
 	Removes a listener callback, given the token that was returned when it was added.
 */
-func RemoveListener(token *ListenerToken) {
+func (db *Database) RemoveListener(token *ListenerToken) {
+	switch token.callbackType {
+	case "DocumentChangeListener":
+		delete(docCallbacks,token.key)
+		break;
+	}
 	C.CBLListener_Remove(token.token)
+	token.callbackType = ""
+	token.key = ""
 }
 	   
 /** @} */

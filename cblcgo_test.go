@@ -1,7 +1,9 @@
 package cblcgo
 
 import "testing"
-// import "fmt"
+import "fmt"
+import "context"
+import "time"
 
 func TestConnection(t *testing.T) {
 	var config DatabaseConfiguration
@@ -36,7 +38,7 @@ func TestConnection(t *testing.T) {
 	}
 }
 
-func TestDocuments(t *testing.T) {
+func TestSaveAndDeleteDocuments(t *testing.T) {
 	var config DatabaseConfiguration
 
 	var encryption_key EncryptionKey
@@ -97,10 +99,18 @@ func TestDocuments(t *testing.T) {
 					if e := db.DeleteDocument(_doc, FailOnConflict); e != nil {
 						t.Error(e)
 					}
+					// Release the underlying CBLDocument ptr
+					if !_doc.Release() || !docs[i].Release() {
+						t.Error("Error releasing a document.")
+					}
 					break;
 				case "purge":
 					if e := db.Purge(_doc); e != nil {
 						t.Error(e)
+					}
+					// Release the underlying CBLDocument ptr
+					if !_doc.Release() || !docs[i].Release() {
+						t.Error("Error releasing a document.")
 					}
 					break;
 				case "purge_id":
@@ -132,4 +142,143 @@ func TestDocuments(t *testing.T) {
 		t.Error(db_err)
 	}
 
+}
+
+func TestSaveAndRetrieveDocuments(t *testing.T) {
+
+	var config DatabaseConfiguration
+
+	var encryption_key EncryptionKey
+	encryption_key.algorithm = EncryptionNone
+	encryption_key.bytes = make([]byte, 0)
+
+	config.directory = "./db"
+	config.encryptionKey = encryption_key
+	
+	config.flags = Database_NoUpgrade
+
+	if db, db_err := Open("my_db", &config); db_err == nil {
+
+		doc := NewDocumentWithId("test")
+		doc.SetPropertiesAsJSON("{\"name\": \"Marcel\", \"lastname\": \"Rivera\", \"age\": 30, \"email\": \"marcel.rivera@gmail.com\"}")
+		// Save the doc, returns the same doc so only release one reference at the end.
+		if _doc, err := db.Save(doc, LastWriteWins); err == nil {
+			// Retrieve the saved doc
+			if savedDoc, e := db.GetMutableDocument("test"); e == nil {
+				for k, v := range savedDoc.Props {
+					if _doc.Props[k] != v {
+						t.Error("Saved document and retrieved document are different.")
+					}
+				}
+				savedDoc.Release()
+			} else {
+				t.Error(e)
+			}
+		} else {
+			t.Error(err)
+		}
+
+		if !db.Close() {
+			t.Error("Couldn't close the database.")
+		}
+
+	} else {
+		t.Error(db_err)
+	}
+	
+}
+
+func TestProperties(t *testing.T) {
+	var config DatabaseConfiguration
+
+	var encryption_key EncryptionKey
+	encryption_key.algorithm = EncryptionNone
+	encryption_key.bytes = make([]byte, 0)
+
+	config.directory = "./db"
+	config.encryptionKey = encryption_key
+	
+	config.flags = Database_NoUpgrade
+
+	if db, db_err := Open("my_db", &config); db_err == nil {
+
+		original := NewDocumentWithId("test2")
+		original.Props["name"] = "Kylo"
+		original.Props["lastname"] = "Ren"
+		original.Props["age"] = 30
+		original.Props["email"] = "son.of.solo@gmail.com"
+
+		newProps := make(map[string]interface{})
+		newProps["name"] = "Rey"
+		newProps["lastname"] = ""
+		newProps["age"] = 25
+		newProps["email"] = "son.of.none@gmail.com"
+
+		cpy := DocumentMutableCopy(original)
+		if cpy.SetProperties(newProps) {
+			for k, v := range cpy.Props {
+				if original.Props[k] == v {
+					t.Error("Original document and copied document have a similar property.")
+				}
+			}
+			original.Release()
+			cpy.Release()
+		} else {
+			t.Error("Couldn't set the properties with new map.")
+		}
+
+		if !db.Close() {
+			t.Error("Couldn't close the database.")
+		}
+		
+	} else {
+		t.Error(db_err)
+	}
+}
+
+func TestDocumentListener(t *testing.T) {
+	var config DatabaseConfiguration
+
+	var encryption_key EncryptionKey
+	encryption_key.algorithm = EncryptionNone
+	encryption_key.bytes = make([]byte, 0)
+
+	config.directory = "./db"
+	config.encryptionKey = encryption_key
+	
+	config.flags = Database_NoUpgrade
+
+	if db, db_err := Open("my_db", &config); db_err == nil {
+
+		doc := NewDocumentWithId("documentToListenTo")
+		doc.SetPropertiesAsJSON("{\"name\": \"Marcel\", \"lastname\": \"Rivera\", \"age\": 30, \"email\": \"marcel.rivera@gmail.com\"}")
+		// Save the doc, returns the same doc so only release one reference at the end.
+		if _, err := db.Save(doc, LastWriteWins); err == nil {
+			ctx := context.WithValue(context.Background(), "package", "cblcgo")
+			ctx = context.WithValue(ctx, uuid, "myUniqueIDGlobaly")
+			// Create and set the listener
+			var documentChangeCallback = func (ctx context.Context, db *Database, docId string) {
+				fmt.Println("I'm in callback")
+				fmt.Println(ctx.Value("package").(string))
+			}
+			if token, ee := db.AddDocumentChangeListener(documentChangeCallback, "documentToListenTo", ctx, []string{"package", uuid}); ee == nil {
+				// Change and save the document
+				doc.Props["name"] = "test"
+				if _, e := db.Save(doc, LastWriteWins); e != nil {
+					t.Error(e)
+				}
+				time.Sleep(1 * time.Second)
+				db.RemoveListener(token)
+			}
+		} else {
+			t.Error(err)
+		}
+
+		if !db.Close() {
+			t.Error("Couldn't close the database.")
+		}
+
+	} else {
+		t.Error(db_err)
+	}
 }

@@ -291,11 +291,20 @@ type QueryChangeListener func(ctx context.Context, query *Query)
 // CBLListenerToken* CBLQuery_AddChangeListener(CBLQuery* query _cbl_nonnull,
                                             //  CBLQueryChangeListener listener _cbl_nonnull,
 											//  void *context) CBLAPI;
-func (q *Query) AddChangeListener(listener QueryChangeListener, ctx context.Context) *ListenerToken {
-  ctx = context.WithValue(ctx, callback, listener)
-  token := C.CBLQuery_AddChangeListener(q.q, (C.CBLQueryChangeListener)(C.gatewayQueryChangeGoCallback), unsafe.Pointer(&ctx))
-  listener_token := ListenerToken{token}
-  return &listener_token
+func (q *Query) AddChangeListener(listener QueryChangeListener, ctx context.Context, ctxKeys []string) (*ListenerToken, error) {
+  if v := ctx.Value(uuid); v != nil {
+		key, ok := v.(string)
+		if ok {
+			queryCallbacks[key] = listener
+			mutableDictContext := storeContextInMutableDict(ctx, ctxKeys)
+      token := C.CBLQuery_AddChangeListener(q.q, (C.CBLQueryChangeListener)(C.gatewayQueryChangeGoCallback),
+                                            unsafe.Pointer(mutableDictContext))
+      listener_token := ListenerToken{key,token,"QueryChangeListener"}
+			return &listener_token, nil
+		}
+	}
+	ErrCBLInternalError = fmt.Errorf("CBL: No UUID present in context.")
+	return nil, ErrCBLInternalError
 }
 
 /** Returns the query's _entire_ current result set, after it's been announced via a call to the

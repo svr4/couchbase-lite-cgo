@@ -1,34 +1,39 @@
 package cblcgo
-// /*
-// #cgo LDFLAGS: -L. -lCouchbaseLiteC
-// #include <stdlib.h>
-// #include <stdio.h>
-// //#include "include/CBLLog.h"
-// #include "include/CBLLog.h"
+/*
+#cgo LDFLAGS: -L. -lCouchbaseLiteC
+#include <stdlib.h>
+#include <stdio.h>
+//#include "include/CBLLog.h"
+#include "include/CBLBase.h"
 
-// */
-// import "C"
+*/
+import "C"
 
-// type LogLevel uint8
+type LogLevel uint8
 
-// const (
-// 	LogDebug LogLevel = iota
-//     LogVerbose
-//     LogInfo
-//     LogWarning
-//     LogError
-//     LogNone
-// )
+const (
+	LogDebug LogLevel = iota
+    LogVerbose
+    LogInfo
+    LogWarning
+    LogError
+    LogNone
+)
 
-// type LogDomain uint8
+type LogDomain uint8
 
-// const (
-// 	LogDomainAll LogDomain = iota
-//     LogDomainDatabase
-//     LogDomainQuery
-//     LogDomainReplicator
-//     LogDomainNetwork
-// )
+const (
+	LogDomainAll LogDomain = iota
+    LogDomainDatabase
+    LogDomainQuery
+    LogDomainReplicator
+    LogDomainNetwork
+)
+
+// void CBL_SetLogLevel(CBLLogLevel, CBLLogDomain) CBLAPI;
+func SetLogLevel(level LogLevel, domain LogDomain) {
+	C.CBL_SetLogLevel(C.CBLLogLevel(level), C.CBLLogDomain(domain))
+}
 
 // /** An object containing properties for file logging configuration 
 //     @warning \ref usePlaintext results in significantly larger log files; we recommend turning

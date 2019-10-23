@@ -37,6 +37,7 @@ import "C"
 import "unsafe"
 import "fmt"
 import "context"
+//import "reflect"
 
 /** \defgroup documents   Documents
     @{
@@ -110,7 +111,7 @@ func (db *Database) Save(doc *Document, concurrency ConcurrencyControl) (*Docume
 	err := (*C.CBLError)(C.malloc(C.sizeof_CBLError))
 	defer C.free(unsafe.Pointer(err))
 
-	saved_doc := C.CBLDatabase_SaveDocument(db.db, doc.doc, C.CBLConcurrencyControl(concurrency), err)
+	saved_doc := C.CBLDatabase_SaveDocument(db.db, C.CBLDocument_MutableCopy(doc.doc), C.CBLConcurrencyControl(concurrency), err)
 
 	if !bool(C.is_Null(unsafe.Pointer(saved_doc))) {
 		doc.doc = saved_doc
@@ -138,7 +139,7 @@ func (db *Database) DeleteDocument(doc *Document, concurrency ConcurrencyControl
 	defer C.free(unsafe.Pointer(err))
 	result := bool(C.CBLDocument_Delete(C.CBLDocument_MutableCopy(doc.doc), C.CBLConcurrencyControl(concurrency), err))
 	if result /*&& (*err).code == 0*/ {
-		C.free(unsafe.Pointer(doc.doc))
+		//C.free(unsafe.Pointer(doc.doc))
 		return nil
 	}
 	c_err_msg := C.CBLError_Message(err)
@@ -162,8 +163,8 @@ func (db *Database) Purge(doc *Document) error {
 	err := (*C.CBLError)(C.malloc(C.sizeof_CBLError))
 	defer C.free(unsafe.Pointer(err))
 	result := bool(C.CBLDocument_Purge(doc.doc, err))
-	if result && (*err).code == 0{
-		C.free(unsafe.Pointer(doc.doc))
+	if result && (*err).code == 0 {
+		//C.free(unsafe.Pointer(doc.doc))
 		return nil
 	}
 	ErrCBLInternalError = fmt.Errorf("CBL: Problem Purging Document. Domain: %d Code: %d", (*err).domain, (*err).code)
@@ -368,7 +369,15 @@ func getDocumentKeysHelper(fl_dict C.FLDict) []string {
 	C.FLDictIterator_End(iter)
 	return keys
 }
-
+/**
+	Releases a documents underlying C CBLDocument pointer and zeros out the rest of the properties.
+**/
+func (doc *Document) Release() bool {
+	C.CBLDocument_Release(doc.doc)	
+	doc.Props = make(map[string]interface{})
+	doc.keys = make([]string, 0)
+	return true
+}
 
 /** Returns a mutable document's properties as a mutable dictionary.
     You may modify this dictionary and then call \ref CBLDatabase_SaveDocument to persist the changes.
@@ -383,6 +392,10 @@ func getDocumentKeysHelper(fl_dict C.FLDict) []string {
            releasing your own reference(s) to it. */
 // void CBLDocument_SetProperties(CBLDocument* _cbl_nonnull,
 							//    FLMutableDict properties _cbl_nonnull) CBLAPI;
+func (doc *Document) SetProperties(props map[string]interface{}) bool {
+	doc.Props = props
+	return syncMapToUnderlyingDict(doc)
+}
 							
 // FLDoc CBLDocument_CreateFleeceDoc(const CBLDocument* _cbl_nonnull) CBLAPI;
 
@@ -526,27 +539,22 @@ func (db *Database) SetDocumentExpiration(docId string, timestamp int64) bool {
 //                                                         const char* docID _cbl_nonnull,
 //                                                         CBLDocumentChangeListener listener _cbl_nonnull,
 //                                                         void *context) CBLAPI;
-func (db *Database) AddDocumentChangeListener(listener DocumentChangeListener, docId string, ctx context.Context) *ListenerToken {
-	// if v := ctx.Value(uuid); v != nil {
-	// 	key, ok := v.(string)
-	// 	if ok {
-	// 		db.documentChangeListeners[key] = listener
-	// 		c_docId := C.CString(docId)
-	// 		token := C.CBLDatabase_AddDocumentChangeListener(db.db, c_docId,
-	// 			(C.CBLDocumentChangeListener)(C.gatewayDocumentChangeGoCallback), unsafe.Pointer(&ctx))
-	// 		db.listenerTokens[key] = token
-	// 		return nil
-	// 	}
-	// }
-	// ErrCBLInternalError = fmt.Errorf("CBL: No UUID present in context.")
-	// return ErrCBLInternalError
-	ctx = context.WithValue(ctx, callback, listener)
-	c_docId := C.CString(docId)
-	token := C.CBLDatabase_AddDocumentChangeListener(db.db, c_docId,
-				(C.CBLDocumentChangeListener)(C.gatewayDocumentChangeGoCallback), unsafe.Pointer(&ctx))
-	C.free(unsafe.Pointer(c_docId))
-	listener_token := ListenerToken{token}
-	return &listener_token
+func (db *Database) AddDocumentChangeListener(listener DocumentChangeListener, docId string, ctx context.Context, ctxKeys []string) (*ListenerToken, error) {
+	if v := ctx.Value(uuid); v != nil {
+		key, ok := v.(string)
+		if ok {
+			docCallbacks[key] = listener
+			mutableDictContext := storeContextInMutableDict(ctx, ctxKeys)
+			c_docId := C.CString(docId)
+			token := C.CBLDatabase_AddDocumentChangeListener(db.db, c_docId,
+						(C.CBLDocumentChangeListener)(C.gatewayDocumentChangeGoCallback), unsafe.Pointer(mutableDictContext))
+			C.free(unsafe.Pointer(c_docId))
+			listener_token := ListenerToken{key,token,"DocumentChangeListener"}
+			return &listener_token, nil
+		}
+	}
+	ErrCBLInternalError = fmt.Errorf("CBL: No UUID present in context.")
+	return nil, ErrCBLInternalError
 }
 /** @} */
 /** @} */

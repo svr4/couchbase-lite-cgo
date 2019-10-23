@@ -162,6 +162,7 @@ type ReplicatorConfiguration struct {
 	PushFilter ReplicationFilter
 	PullFilter ReplicationFilter
 	FilterContext context.Context
+	FilterKeys []string
 }
 
 /** @} */
@@ -226,18 +227,19 @@ func NewReplicator(config ReplicatorConfiguration) (*Replicator, error) {
 	c_config.pushFilter = (C.CBLReplicationFilter)(C.gatewayPushFilterCallback)
 	c_config.pullFilter = (C.CBLReplicationFilter)(C.gatewayPullFilterCallback)
 
-	// Place the callbacks in the FilterContext
-	config.FilterContext = context.WithValue(config.FilterContext, pushCallback, config.PushFilter)
-	config.FilterContext = context.WithValue(config.FilterContext, pullCallback, config.PullFilter)
-	c_config.filterContext = unsafe.Pointer(&config.FilterContext)
+	// The pullCallback and pushCallback keys should already be in the context.
+	// Place the context into a mutable dict.
+	dict := storeContextInMutableDict(config.FilterContext, config.FilterKeys)
+	c_config.filterContext = unsafe.Pointer(dict)
 
 	c_replicator := C.CBLReplicator_New(c_config, err)
 	if (*err).code == 0 {
 		replicator := Replicator{c_replicator}
 		return &replicator, nil
 	}
-
-	ErrCBLInternalError = fmt.Errorf("CBL: Problem Creating New Replicator. Domain: %d Code: %d", (*err).domain, (*err).code)
+	c_err_msg := C.CBLError_Message(err)
+	ErrCBLInternalError = fmt.Errorf("CBL: %s. Domain: %d Code: %d", C.GoString(c_err_msg), (*err).domain, (*err).code)
+	C.free(unsafe.Pointer(c_err_msg))
 	return nil, ErrCBLInternalError
 }
 
@@ -357,12 +359,20 @@ type ReplicatorChangeListener func(ctx context.Context, replicator *Replicator, 
 //                                                   CBLReplicatorChangeListener _cbl_nonnull, 
 //                                                   void *context) CBLAPI;
 
-// func (rep *Replicator) AddChangeListener(listener ReplicatorChangeListener, ctx context.Context) *ListenerToken {
-// 	ctx = context.WithValue(ctx, callback, listener)
-// 	token := C.CBLReplicator_AddChangeListener(rep.rep,
-// 		(C.CBLReplicatorChangeListener)(C.gatewayReplicatorChangeCallback), unsafe.Pointer(&ctx))
-// 	listener_token := ListenerToken{token}
-// 	return &listener_token
+// func (rep *Replicator) AddChangeListener(listener ReplicatorChangeListener, ctx context.Context, ctxKeys []string) (*ListenerToken, error) {
+// 	if v := ctx.Value(uuid); v != nil {
+// 		key, ok := v.(string)
+// 		if ok {
+// 			replicatorCallbacks[key] = listener
+// 			mutableDictContext := storeContextInMutableDict(ctx, ctxKeys)
+// 			token := C.CBLReplicator_AddChangeListener(rep.rep,
+// 				(C.CBLReplicatorChangeListener)(C.gatewayReplicatorChangeCallback), unsafe.Pointer(mutableDictContext))			
+// 			listener_token := ListenerToken{key,token,"ReplicatorChangeListener"}
+// 			return &listener_token, nil
+// 		}
+// 	}
+// 	ErrCBLInternalError = fmt.Errorf("CBL: No UUID present in context.")
+// 	return nil, ErrCBLInternalError
 // }
 
 /** Flags describing a replicated document. */
@@ -413,10 +423,18 @@ type ReplicatedDocumentListener func(ctx context.Context, replicator *Replicator
 // CBLListenerToken* CBLReplicator_AddDocumentListener(CBLReplicator* _cbl_nonnull,
 //                                                     CBLReplicatedDocumentListener _cbl_nonnull,
 //                                                     void *context) CBLAPI;
-// func (rep *Replicator) AddDocumentListener(listener ReplicatedDocumentListener, ctx context.Context) *ListenerToken {
-// 	ctx = context.WithValue(ctx, callback, listener)
-// 	token := C.CBLReplicator_AddDocumentListener(rep.rep,
-// 		(C.CBLReplicatedDocumentListener)(C.gatewayReplicatedDocumentCallback), unsafe.Pointer(&ctx))
-// 	listener_token := ListenerToken{token}
-// 	return &listener_token
+// func (rep *Replicator) AddDocumentListener(listener ReplicatedDocumentListener, ctx context.Context, ctxKeys []string) (*ListenerToken, error) {
+// 	if v := ctx.Value(uuid); v != nil {
+// 		key, ok := v.(string)
+// 		if ok {
+// 			replicatedDocCallbacks[key] = listener
+// 			mutableDictContext := storeContextInMutableDict(ctx, ctxKeys)
+// 			token := C.CBLReplicator_AddDocumentListener(rep.rep,
+// 				(C.CBLReplicatedDocumentListener)(C.gatewayReplicatedDocumentCallback), unsafe.Pointer(mutableDictContext))			
+// 			listener_token := ListenerToken{key,token,"ReplicatedDocumentListener"}
+// 			return &listener_token, nil
+// 		}
+// 	}
+// 	ErrCBLInternalError = fmt.Errorf("CBL: No UUID present in context.")
+// 	return nil, ErrCBLInternalError
 // }
