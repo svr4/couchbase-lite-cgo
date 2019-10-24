@@ -321,24 +321,24 @@ func TestQuery(t *testing.T) {
 			}
 			doc.Release()
 
-			if query, qerr := db.NewQuery(N1QLLanguage, "SELECT COUNT(1)"); qerr == nil {
+			if query, qerr := db.NewQuery(N1QLLanguage, "SELECT COUNT(1) where name = $name"); qerr == nil {
 
 				// Add parameter
-				// queryParam := make(map[string]interface{})
-				// queryParam["name"] = "Marcel"
-				//if perr := query.SetParameters(queryParam); perr == nil {
+				queryParam := make(map[string]interface{})
+				queryParam["name"] = "Marcel"
+				if perr := query.SetParameters(queryParam); perr == nil {
 					if resultSet, eerr := query.Execute(); eerr == nil {
 						for resultSet.Next() {
-							if val, ok := resultSet.ValueAtIndex(0).(int64); !ok || val != 6 {
+							if val, ok := resultSet.ValueAtIndex(0).(int64); !ok || val != 1 {
 								t.Error("Queried name doesn't equal expected result.")
 							}
 						}
 					} else {
 						t.Error(eerr)
 					}
-				// } else {
-				// 	t.Error(perr)
-				// }
+				} else {
+					t.Error(perr)
+				}
 				query.Release()
 			} else {
 				t.Error(qerr)
@@ -359,4 +359,8 @@ func TestQuery(t *testing.T) {
 	} else {
 		t.Error(db_err)
 	}
+}
+
+func TestBlob(t *testing.T) {
+
 }
