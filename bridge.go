@@ -25,7 +25,7 @@ import "C"
 import "unsafe"
 import "context"
 import "reflect"
-// import "fmt"
+import "fmt"
 
 //export databaseListenerBridge
 func databaseListenerBridge(c unsafe.Pointer, db *C.CBLDatabase, numDocs C.unsigned, docIDs **C.char) {
@@ -48,7 +48,10 @@ func databaseListenerBridge(c unsafe.Pointer, db *C.CBLDatabase, numDocs C.unsig
 	}
 
 	v := ctx.Value(uuid).(string)
-	(dbCallbacks[v])(ctx, &database, ids)
+	fn, ok := dbCallbacks[v]
+	if ok {
+		fn(ctx, &database, ids)
+	}
 }
 //export documentListenerBridge
 func documentListenerBridge(c unsafe.Pointer, db *C.CBLDatabase, c_docID *C.char) {
@@ -70,7 +73,11 @@ func documentListenerBridge(c unsafe.Pointer, db *C.CBLDatabase, c_docID *C.char
 	//callback := 
 	//(*callback)(ctx, &database, docId)
 	v := ctx.Value(uuid).(string)
-	(docCallbacks[v])(ctx, &database, docId)
+	fmt.Println(len(docCallbacks))
+	fn, ok := docCallbacks[v]
+	if ok {
+		fn(ctx, &database, docId)
+	}
 }
 //export notificationBridge
 func notificationBridge(c unsafe.Pointer, db *C.CBLDatabase) {
@@ -82,7 +89,9 @@ func notificationBridge(c unsafe.Pointer, db *C.CBLDatabase) {
 	for k, v := range props {
 		ctx = context.WithValue(ctx, k, v)
 	}
-	notificationCallback(ctx, &d)
+	if notificationCallback != nil {
+		notificationCallback(ctx, &d)
+	}
 }
 //export queryListenerBride
 func queryListenerBride(c unsafe.Pointer, query *C.CBLQuery) {
@@ -93,7 +102,10 @@ func queryListenerBride(c unsafe.Pointer, query *C.CBLQuery) {
 		ctx = context.WithValue(ctx, k, v)
 	}
 	v := ctx.Value(uuid).(string)
-	(queryCallbacks[v])(ctx, &q)
+	fn, ok := queryCallbacks[v]
+	if ok {
+		fn(ctx, &q)
+	}
 }
 //export pushFilterBridge
 func pushFilterBridge(c unsafe.Pointer, doc *C.CBLDocument, isDeleted C.bool) {
@@ -105,7 +117,10 @@ func pushFilterBridge(c unsafe.Pointer, doc *C.CBLDocument, isDeleted C.bool) {
 		ctx = context.WithValue(ctx, k, v)
 	}
 	v := ctx.Value(pushCallback).(string)
-	(pushFilterCallbacks[v])(ctx, &d, bool(isDeleted))
+	fn, ok := pushFilterCallbacks[v]
+	if ok {
+		fn(ctx, &d, bool(isDeleted))
+	}
 }
 //export pullFilterBridge
 func pullFilterBridge(c unsafe.Pointer, doc *C.CBLDocument, isDeleted C.bool) {
@@ -117,11 +132,14 @@ func pullFilterBridge(c unsafe.Pointer, doc *C.CBLDocument, isDeleted C.bool) {
 		ctx = context.WithValue(ctx, k, v)
 	}
 	v := ctx.Value(pullCallback).(string)
-	(pullFilterCallbacks[v])(ctx, &d, bool(isDeleted))
+	fn, ok := pullFilterCallbacks[v]
+	if ok {
+		fn(ctx, &d, bool(isDeleted))
+	}
 }
 //export replicatorChangeBridge
 func replicatorChangeBridge(c unsafe.Pointer, replicator *C.CBLReplicator, status *C.CBLReplicatorStatus) {
-	ctx := (*context.Context)(c)
+	props, _ := getKeyValuePropMap((C.FLDict)(c))
 	rep := Replicator{replicator}
 
 	e := Error{uint32(status.error.internal_info), uint32(status.error.code), uint32(status.error.domain)}
@@ -129,13 +147,21 @@ func replicatorChangeBridge(c unsafe.Pointer, replicator *C.CBLReplicator, statu
 	progress := ReplicatorProgress{float32(status.progress.fractionComplete), uint64(status.progress.documentCount)}
 	repStatus := ReplicatorStatus{activity, progress, e}
 
-	callback := (*ctx).Value(callback).(ReplicatorChangeListener)
-	callback(*ctx, &rep, &repStatus)
+	ctx := context.Background()
+	for k, v := range props {
+		ctx = context.WithValue(ctx, k, v)
+	}
+
+	v := ctx.Value(uuid).(string)
+	fn, ok := replicatorCallbacks[v]
+	if ok {
+		fn(ctx, &rep, &repStatus)
+	}
 }
 //export replicatedDocumentBridge
 func replicatedDocumentBridge(c unsafe.Pointer, replicator *C.CBLReplicator, isPush C.bool,
 								numDocument C.unsigned, documents *C.CBLReplicatedDocument) {
-	ctx := (*context.Context)(c)
+	props, _ := getKeyValuePropMap((C.FLDict)(c))
 	rep := Replicator{replicator}
 
 	e := Error{uint32(documents.error.internal_info), uint32(documents.error.code), uint32(documents.error.domain)}
@@ -143,8 +169,16 @@ func replicatedDocumentBridge(c unsafe.Pointer, replicator *C.CBLReplicator, isP
 	doc_flags := DocumentFlags(documents.flags)
 	rep_doc := ReplicatedDocument{id, doc_flags, e}
 
-	callback := (*ctx).Value(callback).(ReplicatedDocumentListener)
-	callback(*ctx, &rep, bool(isPush), uint(numDocument), &rep_doc)
+	ctx := context.Background()
+	for k, v := range props {
+		ctx = context.WithValue(ctx, k, v)
+	}
+
+	v := ctx.Value(uuid).(string)
+	fn, ok := replicatedDocCallbacks[v]
+	if ok {
+		fn(ctx, &rep, bool(isPush), uint(numDocument), &rep_doc)
+	}
 }
 
 func getFLValueToGoValue(fl_val C.FLValue) (interface{}, error) {

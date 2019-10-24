@@ -3,7 +3,7 @@ package cblcgo
 import "testing"
 import "fmt"
 import "context"
-import "time"
+// import "time"
 
 func TestConnection(t *testing.T) {
 	var config DatabaseConfiguration
@@ -263,15 +263,93 @@ func TestDocumentListener(t *testing.T) {
 			}
 			if token, ee := db.AddDocumentChangeListener(documentChangeCallback, "documentToListenTo", ctx, []string{"package", uuid}); ee == nil {
 				// Change and save the document
+				//time.Sleep(3 * time.Second)
 				doc.Props["name"] = "test"
 				if _, e := db.Save(doc, LastWriteWins); e != nil {
 					t.Error(e)
 				}
-				time.Sleep(3 * time.Second)
 				db.RemoveListener(token)
 			}
 		} else {
 			t.Error(err)
+		}
+
+		if !db.Close() {
+			t.Error("Couldn't close the database.")
+		}
+
+	} else {
+		t.Error(db_err)
+	}
+}
+
+func TestQuery(t *testing.T) {
+
+	var config DatabaseConfiguration
+
+	var encryption_key EncryptionKey
+	encryption_key.algorithm = EncryptionNone
+	encryption_key.bytes = make([]byte, 0)
+
+	config.directory = "./db"
+	config.encryptionKey = encryption_key
+	
+	config.flags = Database_NoUpgrade
+
+	if db, db_err := Open("my_db", &config); db_err == nil {
+
+		// Create an index
+		var spec IndexSpec
+		spec.IgnoreAccents = true
+		spec.KeyExpressionsJSON = "[\"name\"]"
+		spec.Language = "en"
+		spec.Type = ValueIndex
+
+		if db.CreateIndex("myFirstIndex", spec) {
+
+			indexes := db.IndexNames()
+			//fmt.Println(indexes)
+			if indexes[1] != "myFirstIndex" {
+				t.Error("Created index not in db.")
+			}
+
+			doc := NewDocumentWithId("docToQuery")
+			doc.SetPropertiesAsJSON("{\"name\": \"Marcel\", \"lastname\": \"Rivera\", \"age\": 30, \"email\": \"marcel.rivera@gmail.com\"}")
+			// Save the doc, returns the same doc so only release one reference at the end.
+			if _, err := db.Save(doc, LastWriteWins); err != nil {
+				t.Error(err)
+			}
+			doc.Release()
+
+			if query, qerr := db.NewQuery(N1QLLanguage, "SELECT COUNT(1)"); qerr == nil {
+
+				// Add parameter
+				// queryParam := make(map[string]interface{})
+				// queryParam["name"] = "Marcel"
+				//if perr := query.SetParameters(queryParam); perr == nil {
+					if resultSet, eerr := query.Execute(); eerr == nil {
+						for resultSet.Next() {
+							if val, ok := resultSet.ValueAtIndex(0).(int64); !ok || val != 6 {
+								t.Error("Queried name doesn't equal expected result.")
+							}
+						}
+					} else {
+						t.Error(eerr)
+					}
+				// } else {
+				// 	t.Error(perr)
+				// }
+				query.Release()
+			} else {
+				t.Error(qerr)
+			}
+
+			if !db.DeleteIndex("myFirstIndex") {
+				t.Error("Couldn't delete index.")
+			}
+
+		} else {
+			t.Error("Couldn't Create Index.")
 		}
 
 		if !db.Close() {

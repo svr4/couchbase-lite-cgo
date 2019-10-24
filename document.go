@@ -111,10 +111,10 @@ func (db *Database) Save(doc *Document, concurrency ConcurrencyControl) (*Docume
 	err := (*C.CBLError)(C.malloc(C.sizeof_CBLError))
 	defer C.free(unsafe.Pointer(err))
 
-	saved_doc := C.CBLDatabase_SaveDocument(db.db, C.CBLDocument_MutableCopy(doc.doc), C.CBLConcurrencyControl(concurrency), err)
+	saved_doc := C.CBLDatabase_SaveDocument(db.db, doc.doc, C.CBLConcurrencyControl(concurrency), err)
 
 	if !bool(C.is_Null(unsafe.Pointer(saved_doc))) {
-		doc.doc = saved_doc
+		doc.doc = C.CBLDocument_MutableCopy(saved_doc)
 		documentProperties(doc)
 		return doc, nil
 	}

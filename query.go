@@ -90,7 +90,10 @@ func (db *Database) NewQuery(language QueryLanguage, queryString string) (*Query
 	return nil, ErrProblemPreparingQuery
 }
 
-
+func (q *Query) Release() bool {
+  C.CBLQuery_Release(q.q)
+  return true
+}
 //CBL_REFCOUNTED(CBLQuery*, Query);
 
 /** Assigns values to the query's parameters.
@@ -113,11 +116,11 @@ func (q *Query) SetParameters(parameters map[string]interface{}) error {
 		c_key := C.CString(key)
 		v_slot := C.FLMutableDict_Set(mutable_dict, C.FLStr(c_key))
 		storeGoValueInSlot(v_slot, val)
-		C.free(unsafe.Pointer(c_key))
+		//C.free(unsafe.Pointer(c_key))
 	}
-
-	fl_dict := C.FLMutableDict_GetSource(mutable_dict)
-	C.CBLQuery_SetParameters(q.q, fl_dict)
+  //fmt.Println(uint32(C.FLDict_Count(mutable_dict)))
+	//fl_dict := C.FLMutableDict_GetSource(mutable_dict)
+  C.CBLQuery_SetParameters(q.q, mutable_dict)  
 	return nil
 }
 
@@ -159,8 +162,10 @@ func (q *Query) Execute() (*ResultSet, error) {
 	if (*err).code == 0 {
 		results := ResultSet{c_result_set}
 		return &results, nil
-	}
-	ErrProblemExecutingQuery = fmt.Errorf("CBL: Problem Executing Query. Domain: %d Code: %d", (*err).domain, (*err).code)
+  }
+  c_err_msg := C.CBLError_Message(err)
+  ErrProblemExecutingQuery = fmt.Errorf("CBL: %s. Domain: %d Code: %d", C.GoString(c_err_msg), (*err).domain, (*err).code)
+  C.free(unsafe.Pointer(c_err_msg))
 	return nil, ErrProblemExecutingQuery
 }
 
@@ -225,7 +230,7 @@ func (res *ResultSet) Next() bool {
 								//   unsigned index) CBLAPI;
 func (res *ResultSet) ValueAtIndex(index uint) interface{} {
 	fl_val := C.CBLResultSet_ValueAtIndex(res.rs, C.unsigned(index))
-	if value, err := getFLValueToGoValue(fl_val); err != nil {
+	if value, err := getFLValueToGoValue(fl_val); err == nil {
 		return value
 	}
 	return nil
