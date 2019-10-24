@@ -362,5 +362,78 @@ func TestQuery(t *testing.T) {
 }
 
 func TestBlob(t *testing.T) {
+	var config DatabaseConfiguration
 
+	var encryption_key EncryptionKey
+	encryption_key.algorithm = EncryptionNone
+	encryption_key.bytes = make([]byte, 0)
+
+	config.directory = "./db"
+	config.encryptionKey = encryption_key
+	
+	config.flags = Database_NoUpgrade
+
+	if db, db_err := Open("my_db", &config); db_err == nil {
+
+		doc := NewDocumentWithId("docBlob")
+		doc.SetPropertiesAsJSON("{\"name\": \"Marcel\", \"lastname\": \"Rivera\", \"age\": 30, \"email\": \"marcel.rivera@gmail.com\"}")
+
+		if blob, berr := NewBlobWithData("", []byte("This is a test")); berr == nil {
+			fmt.Println("New Blob")
+			fmt.Println(blob)
+			doc.Props["blob"] = blob		
+			// Save the doc, returns the same doc so only release one reference at the end.
+			if _, err := db.Save(doc, LastWriteWins); err == nil {
+				blob.Release()
+				doc.Release()
+				// Read the document back
+				if docBlob, dblobErr := db.GetMutableDocument("docBlob"); dblobErr == nil {
+					if iblob, ok := docBlob.Props["blob"]; ok {
+						var b *Blob
+
+						if b, ok = iblob.(*Blob); ok {
+							// Make a stream
+							brs := b.NewReadStream()
+							// make destination buffer
+							dst := make([]byte, b.Length())
+							var totalBytes int = 0
+							for uint64(totalBytes) < b.Length() {
+								if bytesRead, brerr := blob.Read(brs, dst); brerr == nil {
+									totalBytes += bytesRead
+								} else {
+									t.Error(brerr)
+								}
+							}
+
+							if  "This is a test" != string(dst) {
+								t.Error("Blob content doesn't match.")
+							}
+
+							b.CloseReader(brs)
+						} else {
+							t.Error("Couln't convert var iblob to type *Blob")
+						}
+					} else {
+						t.Error("No entry for key \"blob\"")
+					}
+					// If you get a doc with a blob and try to release the doc after releasing the blob it will cause and error
+					// or it could be because of the if's
+					docBlob.Release()
+				} else {
+					t.Error(dblobErr)
+				}
+			} else {
+				t.Error(err)
+			}
+		} else {
+			t.Error(berr)
+		}
+
+		if !db.Close() {
+			t.Error("Couldn't close the database.")
+		}
+
+	} else {
+		t.Error(db_err)
+	}
 }

@@ -201,7 +201,10 @@ func NewBlobWithData(contentType string, contents []byte) (*Blob, error) {
 	return nil, ErrProblemCreatingBlobWithData
 }
 
-
+func (blob *Blob) Release() bool {
+	C.CBLBlob_Release(blob.blob)
+	return true
+}
 
  /** A stream for writing a new blob to the database. */
 //  typedef struct CBLBlobWriteStream CBLBlobWriteStream;
