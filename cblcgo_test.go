@@ -14,7 +14,6 @@ func TestConnection(t *testing.T) {
 
 	config.directory = "./db"
 	config.encryptionKey = encryption_key
-	// sun pass & internet for credit card
 	config.flags = Database_Create
 
 	if db, err := Open("my_db", &config); err == nil {
@@ -81,15 +80,6 @@ func TestSaveAndDeleteDocuments(t *testing.T) {
 		doc_to_delete.Props["action"] = "expire"
 
 		var docs []*Document = []*Document{doc_to_delete, doc_to_purge, doc_to_purge_by_id, doc_to_expire}
-		// if doc, err := db.Save(doc_to_delete, LastWriteWins); err == nil {
-		// 	fmt.Println("cblcgo_test")
-		// 	fmt.Println(doc)
-		// 	if e := db.DeleteDocument(doc_to_delete, LastWriteWins); e != nil {
-		// 		t.Error(e)
-		// 	}
-		// } else {
-		// 	t.Error(err)
-		// }
 
 		for i:=0; i < len(docs); i++ {
 			if _doc, err := db.Save(docs[i], LastWriteWins); err == nil {
