@@ -8,7 +8,7 @@ The package was built and tested on macOS Mojave (10.14.6).
 
 # Example
 
-```
+```go
 var config DatabaseConfiguration
 
 var encryption_key EncryptionKey
