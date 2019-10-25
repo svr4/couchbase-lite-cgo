@@ -4,7 +4,7 @@ This project serves as a Go lang wrapper for the couchbase-lite-C library develo
 
 It currently supports commit https://github.com/couchbaselabs/couchbase-lite-C/commit/2b07a0f2bf3f59c33989733d32a2b985213fb2bb of the library. The replication functions have been commented out since the library itself didn't support them at the time. A future update will properly support this functionality.
 
-The package was built and tested on macOS Mojave (10.14.6).
+The package was built and tested on macOS Mojave (10.14.6) using Go version `go1.12.9 darwin/amd64`.
 
 # Example
 
