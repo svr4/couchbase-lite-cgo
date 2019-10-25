@@ -499,3 +499,60 @@ func TestListeners(t *testing.T) {
 		t.Error(db_err)
 	}
 }
+
+func TestNotificationCallback(t *testing.T) {
+	var config DatabaseConfiguration
+
+	var encryption_key EncryptionKey
+	encryption_key.algorithm = EncryptionNone
+	encryption_key.bytes = make([]byte, 0)
+
+	config.directory = "./db"
+	config.encryptionKey = encryption_key
+	
+	config.flags = Database_NoUpgrade
+
+	if db, db_err := Open("my_db", &config); db_err == nil {
+
+		doc := NewDocumentWithId("notifCallback")
+		doc.SetPropertiesAsJSON("{\"name\": \"Marcel\", \"lastname\": \"Rivera\", \"age\": 30, \"email\": \"marcel.rivera@gmail.com\"}")
+		// Save the doc, returns the same doc so only release one reference at the end.
+		if _, err := db.Save(doc, LastWriteWins); err == nil {
+			ctx := context.WithValue(context.Background(), "package", "cblcgo")
+			ctx = context.WithValue(ctx, uuid, "myUniqueIDGlobaly")
+			// Create and set the listener
+			var documentChangeCallback = func (ctx context.Context, db *Database, docId string) {
+				fmt.Println("I'm in callback")
+				fmt.Println(ctx.Value("package").(string))
+			}
+			if token, ee := db.AddDocumentChangeListener(documentChangeCallback, "notifCallback", ctx, []string{"package", uuid}); ee == nil {
+				
+				// Notification change listener
+				notif_callback := func (ctx context.Context, db *Database) {
+					fmt.Println("notification callback")
+					db.SendNotifications()
+				}
+				ctx2 := context.WithValue(context.Background(), "package", "cblcgo")
+				db.DatabaseBufferNotifications(notif_callback, ctx2, []string{"package"})
+
+				// Change and save the document
+				time.Sleep(2 * time.Second)
+				doc.Props["name"] = "test"
+				if _, e := db.Save(doc, LastWriteWins); e != nil {
+					t.Error(e)
+				}
+				time.Sleep(4 * time.Second)
+				db.RemoveListener(token)
+			}
+		} else {
+			t.Error(err)
+		}
+
+		if !db.Close() {
+			t.Error("Couldn't close the database.")
+		}
+
+	} else {
+		t.Error(db_err)
+	}
+}
