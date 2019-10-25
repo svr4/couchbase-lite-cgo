@@ -3,7 +3,7 @@ package cblcgo
 import "testing"
 import "fmt"
 import "context"
-// import "time"
+import "time"
 
 func TestConnection(t *testing.T) {
 	var config DatabaseConfiguration
@@ -263,11 +263,12 @@ func TestDocumentListener(t *testing.T) {
 			}
 			if token, ee := db.AddDocumentChangeListener(documentChangeCallback, "documentToListenTo", ctx, []string{"package", uuid}); ee == nil {
 				// Change and save the document
-				//time.Sleep(3 * time.Second)
+				time.Sleep(2 * time.Second)
 				doc.Props["name"] = "test"
 				if _, e := db.Save(doc, LastWriteWins); e != nil {
 					t.Error(e)
 				}
+				time.Sleep(2 * time.Second)
 				db.RemoveListener(token)
 			}
 		} else {
@@ -427,6 +428,67 @@ func TestBlob(t *testing.T) {
 			}
 		} else {
 			t.Error(berr)
+		}
+
+		if !db.Close() {
+			t.Error("Couldn't close the database.")
+		}
+
+	} else {
+		t.Error(db_err)
+	}
+}
+
+func TestListeners(t *testing.T) {
+	var config DatabaseConfiguration
+
+	var encryption_key EncryptionKey
+	encryption_key.algorithm = EncryptionNone
+	encryption_key.bytes = make([]byte, 0)
+
+	config.directory = "./db"
+	config.encryptionKey = encryption_key
+	
+	config.flags = Database_NoUpgrade
+
+	if db, db_err := Open("my_db", &config); db_err == nil {
+
+		// Save the doc, returns the same doc so only release one reference at the end.
+		ctx := context.WithValue(context.Background(), "package", "cblcgo")
+		ctx = context.WithValue(ctx, uuid, "myUniqueIDGlobaly")
+		// set a whole bunch of listeners
+		// Database listener
+		db_callback := func(ctx context.Context, db *Database, docIDs []string) {
+			fmt.Println(len(docIDs))
+			fmt.Println("db callback")
+		}
+		// This will be a live query that will be called when the result set changes.
+		query_callback := func(ctx context.Context, query *Query) {
+			fmt.Println("query callback")
+		}
+
+		if db_token, dberr := db.AddDatabaseChangeListener(db_callback, ctx, []string{"package", uuid}); dberr == nil {
+			if query, qerr := db.NewQuery(N1QLLanguage, "SELECT COUNT(1) where name = $name"); qerr == nil {
+
+				if query_token, qerr2 := query.AddChangeListener(query_callback, ctx, []string{"package", uuid}); qerr2 == nil {
+					
+					doc := NewDocumentWithId("docListener")
+					doc.SetPropertiesAsJSON("{\"name\": \"Marcel\", \"lastname\": \"Rivera\", \"age\": 30, \"email\": \"marcel.rivera@gmail.com\"}")
+					if _, err := db.Save(doc, LastWriteWins); err == nil {
+						time.Sleep(3 * time.Second)
+						doc.Release()
+						db.RemoveListener(db_token)
+						db.RemoveListener(query_token)
+					}
+
+				} else {
+					t.Error(qerr2)
+				}
+			} else {
+				t.Error(qerr)
+			}	
+		} else {
+			t.Error(dberr)
 		}
 
 		if !db.Close() {

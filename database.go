@@ -15,6 +15,10 @@ void gatewayDatabaseChangeGoCallback(void *context, const CBLDatabase* db _cbl_n
 void notificationReadyCallback(void *context, CBLDatabase* db _cbl_nonnull) {
 	notificationBridge(context);
 }
+
+char * getDocIDFromArray(char **docIds, unsigned index) {
+	return docIds[index];
+}
 */
 import "C"
 import "unsafe"

@@ -14,7 +14,7 @@ void gatewayPullFilterCallback(void *context, CBLDocument* doc, bool isDeleted);
 void gatewayReplicatorChangeCallback(void *context, CBLReplicator *replicator _cbl_nonnull, const CBLReplicatorStatus *status _cbl_nonnull);
 void gatewayReplicatedDocumentCallback(void *context, CBLReplicator *replicator _cbl_nonnull, bool isPush, unsigned numDocuments, const CBLReplicatedDocument* documents);
 
-
+char * getDocIDFromArray(char **docIds, unsigned index); // Implemented in database.go
 
 FLValue FLArray_AsValue(FLArray);
 FLValue FLDict_AsValue(FLDict);
@@ -35,7 +35,10 @@ func databaseListenerBridge(c unsafe.Pointer, db *C.CBLDatabase, numDocs C.unsig
 	var i, count_docs uint
 	count_docs = uint(numDocs)
 	for i=0; i < count_docs; i++ {
-		ids[i] = C.GoString(*docIDs)	
+		// docPtr := uintptr(unsafe.Pointer(*docIDs)) + uintptr(i)
+		// docIdPtr := unsafe.Pointer(docPtr)
+		// ids[i] = C.GoString((*C.char)(docIdPtr))
+		ids[i] = C.GoString(C.getDocIDFromArray(docIDs, C.unsigned(i)))
 	}
 
 	database := Database{}
