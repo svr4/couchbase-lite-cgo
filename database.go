@@ -60,12 +60,14 @@ var pullFilterCallbacks map[string]ReplicationFilter = make(map[string]Replicati
 var replicatedDocCallbacks map[string]ReplicatedDocumentListener = make(map[string]ReplicatedDocumentListener)
 var replicatorCallbacks map[string]ReplicatorChangeListener = make(map[string]ReplicatorChangeListener)
 var notificationCallback NotificationsReadyCallback
+var conflictResolverCallbacks map[string]ConflictResolver = make(map[string]ConflictResolver)
 
 
 var uuid string = "UUID"
 var callback string = "CALLBACK"
-var pushCallback = "PUSHCALLBACK"
-var pullCallback = "PULLCALLBACK"
+var pushCallback string = "PUSHCALLBACK"
+var pullCallback string = "PULLCALLBACK"
+var conflictResolver string = "CONFLICTRESOLVER"
 
 /** Encryption key specified in a \ref CBLDatabaseConfiguration. */
 type EncryptionKey struct {

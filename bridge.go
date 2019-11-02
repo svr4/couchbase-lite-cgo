@@ -13,12 +13,14 @@ void gatewayPushFilterCallback(void *context, CBLDocument* doc, bool isDeleted);
 void gatewayPullFilterCallback(void *context, CBLDocument* doc, bool isDeleted);
 void gatewayReplicatorChangeCallback(void *context, CBLReplicator *replicator _cbl_nonnull, const CBLReplicatorStatus *status _cbl_nonnull);
 void gatewayReplicatedDocumentCallback(void *context, CBLReplicator *replicator _cbl_nonnull, bool isPush, unsigned numDocuments, const CBLReplicatedDocument* documents);
+const CBLDocument* gatewayConflictResolverCallback(void *context, const char *documentID, const CBLDocument *localDocument, const CBLDocument *remoteDocument);
 
 char * getDocIDFromArray(char **docIds, unsigned index); // Implemented in database.go
 
 FLValue FLArray_AsValue(FLArray);
 FLValue FLDict_AsValue(FLDict);
 bool is_Null(void *);
+void SetProxyType(CBLProxySettings * proxy, CBLProxyType);
 
 */
 import "C"
@@ -182,6 +184,31 @@ func replicatedDocumentBridge(c unsafe.Pointer, replicator *C.CBLReplicator, isP
 	if ok {
 		fn(ctx, &rep, bool(isPush), uint(numDocument), &rep_doc)
 	}
+}
+//export conflictResolverBridge
+func conflictResolverBridge(c unsafe.Pointer, documentID *C.char, localDocument *C.CBLDocument, remoteDocument *C.CBLDocument) *C.CBLDocument {
+	props, _ := getKeyValuePropMap((C.FLDict)(c))
+
+	docId := C.GoString(documentID)
+
+	localDoc := Document{}
+	localDoc.doc = localDocument
+
+	remoteDoc := Document{}
+	remoteDoc.doc = remoteDocument
+
+	ctx := context.Background()
+	for k, v := range props {
+		ctx = context.WithValue(ctx, k, v)
+	}
+	v := ctx.Value(conflictResolver).(string)
+	fn, ok := conflictResolverCallbacks[v]
+	if ok {
+		// We need to return the underlying CBLDocument pointer.
+		cblcgo_doc := fn(ctx, docId, &localDoc, &remoteDoc)
+		return cblcgo_doc.doc
+	}
+	return localDocument
 }
 
 func getFLValueToGoValue(fl_val C.FLValue) (interface{}, error) {
