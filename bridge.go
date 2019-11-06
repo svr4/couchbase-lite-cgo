@@ -9,8 +9,8 @@ void gatewayDatabaseChangeGoCallback(void *context, const CBLDatabase* db _cbl_n
 void gatewayDocumentChangeGoCallback(void *context, const CBLDatabase* db _cbl_nonnull, const char *docID _cbl_nonnull);
 void gatewayQueryChangeGoCallback(void *context, CBLQuery* query _cbl_nonnull);
 void notificationReadyCallback(void *context, CBLDatabase* db _cbl_nonnull);
-void gatewayPushFilterCallback(void *context, CBLDocument* doc, bool isDeleted);
-void gatewayPullFilterCallback(void *context, CBLDocument* doc, bool isDeleted);
+bool gatewayPushFilterCallback(void *context, CBLDocument* doc, bool isDeleted);
+bool gatewayPullFilterCallback(void *context, CBLDocument* doc, bool isDeleted);
 void gatewayReplicatorChangeCallback(void *context, CBLReplicator *replicator _cbl_nonnull, const CBLReplicatorStatus *status _cbl_nonnull);
 void gatewayReplicatedDocumentCallback(void *context, CBLReplicator *replicator _cbl_nonnull, bool isPush, unsigned numDocuments, const CBLReplicatedDocument* documents);
 const CBLDocument* gatewayConflictResolverCallback(void *context, const char *documentID, const CBLDocument *localDocument, const CBLDocument *remoteDocument);
@@ -21,6 +21,10 @@ FLValue FLArray_AsValue(FLArray);
 FLValue FLDict_AsValue(FLDict);
 bool is_Null(void *);
 void SetProxyType(CBLProxySettings * proxy, CBLProxyType);
+void Set_Null(void *);
+bool Close_Database(CBLDatabase *);
+// void SetPinnedCertToNull(CBLReplicatorConfiguration *);
+// void SetTrustedCertToNull(CBLReplicatorConfiguration *config);
 
 */
 import "C"
@@ -113,7 +117,7 @@ func queryListenerBride(c unsafe.Pointer, query *C.CBLQuery) {
 	}
 }
 //export pushFilterBridge
-func pushFilterBridge(c unsafe.Pointer, doc *C.CBLDocument, isDeleted C.bool) {
+func pushFilterBridge(c unsafe.Pointer, doc *C.CBLDocument, isDeleted C.bool) C.bool {
 	props, _ := getKeyValuePropMap((C.FLDict)(c))
 	d := Document{}
 	d.doc = doc
@@ -124,11 +128,12 @@ func pushFilterBridge(c unsafe.Pointer, doc *C.CBLDocument, isDeleted C.bool) {
 	v := ctx.Value(pushCallback).(string)
 	fn, ok := pushFilterCallbacks[v]
 	if ok {
-		fn(ctx, &d, bool(isDeleted))
+		return C.bool(fn(ctx, &d, bool(isDeleted)))
 	}
+	return false
 }
 //export pullFilterBridge
-func pullFilterBridge(c unsafe.Pointer, doc *C.CBLDocument, isDeleted C.bool) {
+func pullFilterBridge(c unsafe.Pointer, doc *C.CBLDocument, isDeleted C.bool) C.bool {
 	props, _ := getKeyValuePropMap((C.FLDict)(c))
 	d := Document{}
 	d.doc = doc
@@ -139,8 +144,9 @@ func pullFilterBridge(c unsafe.Pointer, doc *C.CBLDocument, isDeleted C.bool) {
 	v := ctx.Value(pullCallback).(string)
 	fn, ok := pullFilterCallbacks[v]
 	if ok {
-		fn(ctx, &d, bool(isDeleted))
+		return C.bool(fn(ctx, &d, bool(isDeleted)))
 	}
+	return false
 }
 //export replicatorChangeBridge
 func replicatorChangeBridge(c unsafe.Pointer, replicator *C.CBLReplicator, status *C.CBLReplicatorStatus) {
