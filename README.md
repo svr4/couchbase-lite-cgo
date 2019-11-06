@@ -6,7 +6,7 @@ It currently supports commit https://github.com/couchbaselabs/couchbase-lite-C/c
 
 The package was built and tested on macOS Mojave (10.14.6) using Go version `go1.12.9 darwin/amd64`.
 
-# Example
+## Example
 
 ```go
 var config DatabaseConfiguration
@@ -55,6 +55,6 @@ if db, err := Open("my_db", &config); err == nil {
 ```
 For more examples look in cblcgo_test.go.
 
-# Testing
+## Testing
 
 If you want to test the package you must build the C library and move or link the necesary files under the `include` directory. The produced `libCouchbaseLiteC` binary from the build should be placed in the root of the package. Once that's in place simply run `make` and it should produce the `.test` binary.
