@@ -1,3 +1,5 @@
+// +build !replication
+
 package cblcgo
 
 import "testing"
@@ -47,9 +49,9 @@ func TestSaveAndDeleteDocuments(t *testing.T) {
 	config.directory = "./db"
 	config.encryptionKey = encryption_key
 	
-	config.flags = Database_NoUpgrade
+	config.flags = Database_Create
 
-	if db, db_err := Open("my_db", &config); db_err == nil {
+	if db, db_err := Open("my_db3", &config); db_err == nil {
 
 		doc_to_delete := NewDocument()
 		doc_to_delete.Props["name"] = "Luke"
@@ -145,9 +147,9 @@ func TestSaveAndRetrieveDocuments(t *testing.T) {
 	config.directory = "./db"
 	config.encryptionKey = encryption_key
 	
-	config.flags = Database_NoUpgrade
+	config.flags = Database_Create
 
-	if db, db_err := Open("my_db", &config); db_err == nil {
+	if db, db_err := Open("my_db4", &config); db_err == nil {
 
 		doc := NewDocumentWithId("test")
 		doc.SetPropertiesAsJSON("{\"name\": \"Marcel\", \"lastname\": \"Rivera\", \"age\": 30, \"email\": \"marcel.rivera@gmail.com\"}")
@@ -188,9 +190,9 @@ func TestProperties(t *testing.T) {
 	config.directory = "./db"
 	config.encryptionKey = encryption_key
 	
-	config.flags = Database_NoUpgrade
+	config.flags = Database_Create
 
-	if db, db_err := Open("my_db", &config); db_err == nil {
+	if db, db_err := Open("my_db5", &config); db_err == nil {
 
 		original := NewDocumentWithId("test2")
 		original.Props["name"] = "Kylo"
@@ -236,9 +238,9 @@ func TestDocumentListener(t *testing.T) {
 	config.directory = "./db"
 	config.encryptionKey = encryption_key
 	
-	config.flags = Database_NoUpgrade
+	config.flags = Database_Create
 
-	if db, db_err := Open("my_db", &config); db_err == nil {
+	if db, db_err := Open("my_db6", &config); db_err == nil {
 
 		doc := NewDocumentWithId("documentToListenTo")
 		doc.SetPropertiesAsJSON("{\"name\": \"Marcel\", \"lastname\": \"Rivera\", \"age\": 30, \"email\": \"marcel.rivera@gmail.com\"}")
@@ -285,9 +287,9 @@ func TestQuery(t *testing.T) {
 	config.directory = "./db"
 	config.encryptionKey = encryption_key
 	
-	config.flags = Database_NoUpgrade
+	config.flags = Database_Create
 
-	if db, db_err := Open("my_db", &config); db_err == nil {
+	if db, db_err := Open("my_db7", &config); db_err == nil {
 
 		// Create an index
 		var spec IndexSpec
@@ -300,7 +302,7 @@ func TestQuery(t *testing.T) {
 
 			indexes := db.IndexNames()
 			//fmt.Println(indexes)
-			if indexes[1] != "myFirstIndex" {
+			if indexes[0] != "myFirstIndex" {
 				t.Error("Created index not in db.")
 			}
 
@@ -318,7 +320,9 @@ func TestQuery(t *testing.T) {
 				queryParam := make(map[string]interface{})
 				queryParam["name"] = "Marcel"
 				if perr := query.SetParameters(queryParam); perr == nil {
+					fmt.Println(query.Explain())
 					if resultSet, eerr := query.Execute(); eerr == nil {
+						query.Release()
 						for resultSet.Next() {
 							if val, ok := resultSet.ValueAtIndex(0).(int64); !ok || val != 1 {
 								t.Error("Queried name doesn't equal expected result.")
@@ -330,7 +334,6 @@ func TestQuery(t *testing.T) {
 				} else {
 					t.Error(perr)
 				}
-				query.Release()
 			} else {
 				t.Error(qerr)
 			}
@@ -362,9 +365,9 @@ func TestBlob(t *testing.T) {
 	config.directory = "./db"
 	config.encryptionKey = encryption_key
 	
-	config.flags = Database_NoUpgrade
+	config.flags = Database_Create
 
-	if db, db_err := Open("my_db", &config); db_err == nil {
+	if db, db_err := Open("my_db8", &config); db_err == nil {
 
 		doc := NewDocumentWithId("docBlob")
 		doc.SetPropertiesAsJSON("{\"name\": \"Marcel\", \"lastname\": \"Rivera\", \"age\": 30, \"email\": \"marcel.rivera@gmail.com\"}")
@@ -439,9 +442,9 @@ func TestListeners(t *testing.T) {
 	config.directory = "./db"
 	config.encryptionKey = encryption_key
 	
-	config.flags = Database_NoUpgrade
+	config.flags = Database_Create
 
-	if db, db_err := Open("my_db", &config); db_err == nil {
+	if db, db_err := Open("my_db9", &config); db_err == nil {
 
 		// Save the doc, returns the same doc so only release one reference at the end.
 		ctx := context.WithValue(context.Background(), "package", "cblcgo")
@@ -500,9 +503,9 @@ func TestNotificationCallback(t *testing.T) {
 	config.directory = "./db"
 	config.encryptionKey = encryption_key
 	
-	config.flags = Database_NoUpgrade
+	config.flags = Database_Create
 
-	if db, db_err := Open("my_db", &config); db_err == nil {
+	if db, db_err := Open("my_db10", &config); db_err == nil {
 
 		doc := NewDocumentWithId("notifCallback")
 		doc.SetPropertiesAsJSON("{\"name\": \"Marcel\", \"lastname\": \"Rivera\", \"age\": 30, \"email\": \"marcel.rivera@gmail.com\"}")

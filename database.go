@@ -19,6 +19,11 @@ void notificationReadyCallback(void *context, CBLDatabase* db _cbl_nonnull) {
 char * getDocIDFromArray(char **docIds, unsigned index) {
 	return docIds[index];
 }
+
+void Set_Null(void * ptr) {
+	ptr = NULL;
+}
+
 */
 import "C"
 import "unsafe"
@@ -60,12 +65,14 @@ var pullFilterCallbacks map[string]ReplicationFilter = make(map[string]Replicati
 var replicatedDocCallbacks map[string]ReplicatedDocumentListener = make(map[string]ReplicatedDocumentListener)
 var replicatorCallbacks map[string]ReplicatorChangeListener = make(map[string]ReplicatorChangeListener)
 var notificationCallback NotificationsReadyCallback
+var conflictResolverCallbacks map[string]ConflictResolver = make(map[string]ConflictResolver)
 
 
 var uuid string = "UUID"
 var callback string = "CALLBACK"
-var pushCallback = "PUSHCALLBACK"
-var pullCallback = "PULLCALLBACK"
+var pushCallback string = "PUSHCALLBACK"
+var pullCallback string = "PULLCALLBACK"
+var conflictResolver string = "CONFLICTRESOLVER"
 
 /** Encryption key specified in a \ref CBLDatabaseConfiguration. */
 type EncryptionKey struct {
@@ -87,15 +94,20 @@ type DatabaseConfiguration struct {
 
 /** Returns true if a database with the given name exists in the given directory.
     @param name  The database name (without the ".cblite2" extension.)
-    @param inDirectory  The directory containing the database. If NULL, `name` must be an
+    @param inDirectory  The directory containing the database. If "", `name` must be an
                         absolute or relative path to the database. */
 //bool CBL_DatabaseExists(const char* _cbl_nonnull name, const char *inDirectory) CBLAPI;
 func DatabaseExists(name, inDirectory string) bool {
 	c_name := C.CString(name)
-	c_inDirectory := C.CString(inDirectory)
+	var c_inDirectory *C.char
+	if len(inDirectory) > 0 {
+		c_inDirectory = C.CString(inDirectory)
+		defer C.free(unsafe.Pointer(c_inDirectory))
+	} else {
+		C.Set_Null(unsafe.Pointer(c_inDirectory))
+	}
 	result := C.CBL_DatabaseExists(c_name, c_inDirectory)
 	C.free(unsafe.Pointer(c_name))
-	C.free(unsafe.Pointer(c_inDirectory))
 	return bool(result)
 }
 
@@ -230,8 +242,8 @@ func Open(name string, config *DatabaseConfiguration) (*Database, error) {
 func (db *Database) Close() bool {
 	err := (*C.CBLError)(C.malloc(C.sizeof_CBLError))
 	defer C.free(unsafe.Pointer(err))
-	result := C.CBLDatabase_Close(db.db, err)
 	C.free(unsafe.Pointer(db.config))
+	result := C.CBLDatabase_Close(db.db, err)
 	return bool(result)
 }
 
@@ -329,7 +341,6 @@ func (db *Database) PurgeExpiredDocuments() int64 {
 func (db *Database) DatabaseName() string {
 	c_name := C.CBLDatabase_Name(db.db)
 	name := C.GoString(c_name)
-	C.free(unsafe.Pointer(c_name))
 	return name
 }
 
@@ -338,7 +349,6 @@ func (db *Database) DatabaseName() string {
 func (db *Database) Path() string {
 	c_path := C.CBLDatabase_Path(db.db)
 	path := C.GoString(c_path)
-	C.free(unsafe.Pointer(c_path))
 	return path
 }
 

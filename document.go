@@ -338,6 +338,7 @@ func getKeyValuePropMap(fl_dict C.FLDict) (map[string]interface{}, error) {
 		// FLString
 		key := C.FLDictIterator_GetKeyString(iter)
 		str_key := C.GoStringN((*C.char)(key.buf), C.int(key.size))
+		// str_key := C.GoString((*C.char)(key.buf))
 
 		i, e := getFLValueToGoValue(value)
 
@@ -448,7 +449,7 @@ func (doc *Document) SetPropertiesAsJSON(json string) bool {
 	defer C.free(unsafe.Pointer(err))
 	c_json := C.CString(json)
 	result := bool(C.CBLDocument_SetPropertiesAsJSON(doc.doc, c_json, err))
-	if result && (*err).code == 0 {
+	if result {
 		C.free(unsafe.Pointer(c_json))
 		documentProperties(doc)
 		return result

@@ -5,17 +5,19 @@ package cblcgo
 #include <stdio.h>
 #include "include/CouchbaseLite.h"
 
-void pushFilterBridge(void *, CBLDocument*, bool);
-void pullFilterBridge(void *, CBLDocument*, bool);
+bool pushFilterBridge(void *, CBLDocument*, bool);
+bool pullFilterBridge(void *, CBLDocument*, bool);
 void replicatorChangeBridge(void *, CBLReplicator*, CBLReplicatorStatus*);
 void replicatedDocumentBridge(void *, CBLReplicator*, bool, unsigned, CBLReplicatedDocument*);
+const CBLDocument * conflictResolverBridge(void *, const char *, const CBLDocument *, const CBLDocument *);
+void Set_Null(void *);
 
-void gatewayPushFilterCallback(void *context, CBLDocument* doc, bool isDeleted) {
-	pushFilterBridge(context, doc, isDeleted);
+bool gatewayPushFilterCallback(void *context, CBLDocument* doc, bool isDeleted) {
+	return pushFilterBridge(context, doc, isDeleted);
 }
 
-void gatewayPullFilterCallback(void *context, CBLDocument* doc, bool isDeleted) {
-	pullFilterBridge(context, doc, isDeleted);
+bool gatewayPullFilterCallback(void *context, CBLDocument* doc, bool isDeleted) {
+	return pullFilterBridge(context, doc, isDeleted);
 }
 
 void gatewayReplicatorChangeCallback(void *context, CBLReplicator *replicator _cbl_nonnull, 
@@ -26,6 +28,14 @@ void gatewayReplicatorChangeCallback(void *context, CBLReplicator *replicator _c
 void gatewayReplicatedDocumentCallback(void *context, CBLReplicator *replicator _cbl_nonnull, bool isPush,
 									unsigned numDocuments, const CBLReplicatedDocument* documents) {
 	replicatedDocumentBridge(context, replicator, isPush, numDocuments, (CBLReplicatedDocument*)documents);
+}
+
+const CBLDocument* gatewayConflictResolverCallback(void *context, const char *documentID, const CBLDocument *localDocument, const CBLDocument *remoteDocument) {
+	return conflictResolverBridge(context, documentID, localDocument, remoteDocument);
+}
+
+void SetProxyType(CBLProxySettings * proxy, CBLProxyType type) {
+	proxy->type = type;
 }
 
 */
@@ -107,6 +117,11 @@ func NewAuthSession(sessionId, cookieName string) (*Authenticator, error) {
 	return &auth, nil
 }
 
+func NewProxySettings(proxyType ProxyType, hostname string, port uint16, username, password string) *ProxySettings {
+	p := ProxySettings{proxyType, hostname, port, username, password}
+	return &p
+}
+
 /** Frees a CBLAuthenticator object. */
 //void CBLAuth_Free(CBLAuthenticator*) CBLAPI;
 
@@ -128,9 +143,74 @@ const (
 /** A callback that can decide whether a particular document should be pushed or pulled.
     @warning  This callback will be called on a background thread managed by the replicator.
                 It must pay attention to thread-safety. It should not take a long time to return,
-                or it will slow down the replicator. */
+				or it will slow down the replicator.
+				@param context  The `context` field of the \ref CBLReplicatorConfiguration.
+			    @param document  The document in question.
+			    @param isDeleted True if the document has been deleted.
+			    @return  True if the document should be replicated, false to skip it. */
 //typedef bool (*CBLReplicationFilter)(void *context, CBLDocument* document, bool isDeleted);
 type ReplicationFilter func (ctx context.Context, doc *Document, isDeleted bool) bool
+
+/** Conflict-resolution callback for use in replications. This callback will be invoked
+			    when the replicator finds a newer server-side revision of a document that also has local
+			    changes. The local and remote changes must be resolved before the document can be pushed
+			    to the server.
+			    @warning  This callback will be called on a background thread managed by the replicator.
+			                It must pay attention to thread-safety. However, unlike a filter callback,
+			                it does not need to return quickly. If it needs to prompt for user input,
+			                that's OK.
+			    @param context  The `context` field of the \ref CBLReplicatorConfiguration.
+			    @param documentID  The ID of the conflicted document.
+			    @param localDocument  The current revision of the document in the local database,
+			                or NULL if the local document has been deleted.
+			    @param remoteDocument  The revision of the document found on the server,
+			                or NULL if the document has been deleted on the server.
+			    @return  The resolved document to save locally (and push, if the replicator is pushing.)
+			        This can be the same as \p localDocument or \p remoteDocument, or you can create
+			        a mutable copy of either one and modify it appropriately.
+					Or return NULL if the resolution is to delete the document. */
+					
+// typedef const CBLDocument* (*CBLConflictResolver)(void *context,
+// 							const char *documentID,
+// 							const CBLDocument *localDocument,
+// 							const CBLDocument *remoteDocument);
+
+type ConflictResolver func (ctx context.Context, documentId string,
+							localDocument *Document, remoteDocument *Document) *Document
+
+
+/** Default conflict resolver. This always returns `localDocument`. */
+// extern const CBLConflictResolver CBLDefaultConflictResolver;
+var DefaultConflictResolver ConflictResolver
+
+/** Types of proxy servers, for CBLProxySettings. */
+// typedef CBL_ENUM(uint8_t, CBLProxyType) {
+// 	kCBLProxyHTTP,                      ///< HTTP proxy; must support 'CONNECT' method
+// 	kCBLProxyHTTPS,                     ///< HTTPS proxy; must support 'CONNECT' method
+// };
+type ProxyType uint8
+
+const (
+	ProxyHTTP ProxyType = iota ///< HTTP proxy; must support 'CONNECT' method
+	ProxyHTTPS ///< HTTPS proxy; must support 'CONNECT' method
+)
+
+// /** Proxy settings for the replicator. */
+// typedef struct {
+// 	CBLProxyType type;                  ///< Type of proxy
+// 	const char *hostname;               ///< Proxy server hostname or IP address
+// 	uint16_t port;                      ///< Proxy server port
+// 	const char *username;               ///< Username for proxy auth (optional)
+// 	const char *password;               ///< Password for proxy auth
+// } CBLProxySettings;
+
+type ProxySettings struct {
+	Type ProxyType		///< Type of proxy
+	Hostname string		///< Proxy server hostname or IP address
+	Port uint16			///< Proxy server port
+	Username string		///< Username for proxy auth (optional)
+	Password string 	///< Password for proxy auth
+}
 
 
 /** The configuration of a replicator. */
@@ -139,14 +219,23 @@ type ReplicationFilter func (ctx context.Context, doc *Document, isDeleted bool)
 //     CBLEndpoint* endpoint;              ///< The address of the other database to replicate with
 //     CBLReplicatorType replicatorType;   ///< Push, pull or both
 //     bool continuous;                    ///< Continuous replication?
+//-- HTTP settings:
 //     CBLAuthenticator* authenticator;    ///< Authentication credentials, if needed
-//     FLSlice pinnedServerCertificate;    ///< An X.509 cert to "pin" TLS connections to
+// New:
+//     const CBLProxySettings* proxy;      ///< HTTP client proxy settings
 //     FLDict headers;                     ///< Extra HTTP headers to add to the WebSocket request
+//-- TLS settings:
+//     FLSlice pinnedServerCertificate;    ///< An X.509 cert to "pin" TLS connections to (PEM or DER)
+// New:
+//     FLSlice trustedRootCertificates;    ///< Set of anchor certs (PEM format)
+//-- Filtering:
 //     FLArray channels;                   ///< Optional set of channels to pull from
 //     FLArray documentIDs;                ///< Optional set of document IDs to replicate
 //     CBLReplicationFilter pushFilter;    ///< Optional callback to filter which docs are pushed
 //     CBLReplicationFilter pullFilter;    ///< Optional callback to validate incoming docs
-//     void* filterContext;                ///< Arbitrary value passed to filter callbacks
+// New
+//     CBLConflictResolver conflictResolver;///< Optional conflict-resolver callback
+//     void* context;                      ///< Arbitrary value that will be passed to callbacks
 // } CBLReplicatorConfiguration;
 
 type ReplicatorConfiguration struct {
@@ -155,12 +244,15 @@ type ReplicatorConfiguration struct {
 	Replicator ReplicatorType
 	Continious bool
 	Auth *Authenticator
+	Proxy *ProxySettings
 	PinnedServerCertificate []byte
+	TrustedRootCertificates []byte
 	Headers map[string]interface{}
 	Channels []string
 	DocumentIds []string
 	PushFilter ReplicationFilter
 	PullFilter ReplicationFilter
+	Resolver ConflictResolver
 	FilterContext context.Context
 	FilterKeys []string
 }
@@ -190,51 +282,114 @@ func NewReplicator(config ReplicatorConfiguration) (*Replicator, error) {
 	c_config.continuous = C.bool(config.Continious)
 	c_config.authenticator = config.Auth.auth
 
-	certSize := unsafe.Sizeof(config.PinnedServerCertificate)
-	certBytes := C.CBytes(config.PinnedServerCertificate)
-	c_config.pinnedServerCertificate = C.FLSlice{unsafe.Pointer(certBytes), C.size_t(certSize)}
+	// Proxy Settings
+	if config.Proxy != nil {
+		proxy := (*C.CBLProxySettings)(C.malloc(C.sizeof_CBLProxySettings))
+		// I use this function because Go thinks proxy.type is a type assertion.
+		C.SetProxyType(proxy, C.CBLProxyType(config.Proxy.Type))
+		proxy.hostname = C.CString(config.Proxy.Hostname)
+		proxy.port = C.uint16_t(config.Proxy.Port)
+		proxy.username = C.CString(config.Proxy.Username)
+		proxy.password = C.CString(config.Proxy.Password)
+
+		c_config.proxy = proxy
+	} else {
+		C.Set_Null(unsafe.Pointer(c_config.proxy))
+	}
+
+	if len(config.PinnedServerCertificate) > 0 {
+		certSize := unsafe.Sizeof(config.PinnedServerCertificate)
+		certBytes := C.CBytes(config.PinnedServerCertificate)
+		c_config.pinnedServerCertificate = C.FLSlice{unsafe.Pointer(certBytes), C.size_t(certSize)}
+	} else {
+		c_config.pinnedServerCertificate = C.kFLSliceNull
+	}
+
+
+	if len(config.TrustedRootCertificates) > 0 {
+		// Trusted Certificates
+		trustedCertSize := unsafe.Sizeof(config.TrustedRootCertificates)
+		trustedCertBytes := C.CBytes(config.TrustedRootCertificates)
+		c_config.trustedRootCertificates = C.FLSlice{unsafe.Pointer(trustedCertBytes), C.size_t(trustedCertSize)}
+	} else {
+		c_config.trustedRootCertificates = C.kFLSliceNull
+	}
 
 	// Process Headers
-	mutableDict := C.FLMutableDict_New()
+	if len(config.Headers) > 0 {
+		mutableDict := C.FLMutableDict_New()
 
-	for k, v := range config.Headers {
-		c_key := C.CString(k)
-		fl_slot := C.FLMutableDict_Set(mutableDict, C.FLStr(c_key))
-		storeGoValueInSlot(fl_slot, v)
-		C.free(unsafe.Pointer(c_key))
+		for k, v := range config.Headers {
+			c_key := C.CString(k)
+			fl_slot := C.FLMutableDict_Set(mutableDict, C.FLStr(c_key))
+			storeGoValueInSlot(fl_slot, v)
+			C.free(unsafe.Pointer(c_key))
+		}
+		fl_dict := C.FLDict(mutableDict)
+		c_config.headers = fl_dict
+	} else {
+		c_config.headers = C.FLDict(C.FLMutableDict_New())
 	}
-	fl_dict := C.FLMutableDict_GetSource(mutableDict)
-	c_config.headers = fl_dict
 
 	// Process channels
-	chan_array := C.FLMutableArray_New()
-	for i:=0; i < len(config.Channels); i++ {
-		chan_slot := C.FLMutableArray_Append(chan_array)
-		storeGoValueInSlot(chan_slot, config.Channels[i]);
+	if len(config.Channels) > 0 {
+		chan_array := C.FLMutableArray_New()
+		for i:=0; i < len(config.Channels); i++ {
+			chan_slot := C.FLMutableArray_Append(chan_array)
+			storeGoValueInSlot(chan_slot, config.Channels[i]);
+		}
+		c_config.channels = C.FLArray(chan_array)
+	} else {
+		c_config.channels = C.kFLEmptyArray
 	}
-	c_config.channels = C.FLMutableArray_GetSource(chan_array)
 
 	// Process documentIds
-	docIds_array := C.FLMutableArray_New()
-	for ii:=0; ii < len(config.DocumentIds); ii++ {
-		doc_slot := C.FLMutableArray_Append(docIds_array)
-		storeGoValueInSlot(doc_slot, config.DocumentIds[ii]);
+	if len(config.DocumentIds) > 0 {
+		docIds_array := C.FLMutableArray_New()
+		for ii:=0; ii < len(config.DocumentIds); ii++ {
+			doc_slot := C.FLMutableArray_Append(docIds_array)
+			storeGoValueInSlot(doc_slot, config.DocumentIds[ii]);
+		}
+		c_config.documentIDs = C.FLArray(docIds_array)
+	} else {
+		c_config.documentIDs = C.FLArray(C.FLMutableArray_New())
 	}
-	c_config.documentIDs = C.FLMutableArray_GetSource(docIds_array)
-
-	// callbacks that I have yet to define in bridge
-	// Put the C callbacks in
-	c_config.pushFilter = (C.CBLReplicationFilter)(C.gatewayPushFilterCallback)
-	c_config.pullFilter = (C.CBLReplicationFilter)(C.gatewayPullFilterCallback)
 
 	// The pullCallback and pushCallback keys should already be in the context.
-	pushKey := config.FilterContext.Value(pushCallback).(string)
-	pullKey := config.FilterContext.Value(pullCallback).(string)
-	pushFilterCallbacks[pushKey] = config.PushFilter
-	pullFilterCallbacks[pullKey] = config.PullFilter
+	if config.PushFilter != nil {
+		// Put the C callbacks in
+		c_config.pushFilter = (C.CBLReplicationFilter)(C.gatewayPushFilterCallback)
+		pushKey := config.FilterContext.Value(pushCallback).(string)
+		pushFilterCallbacks[pushKey] = config.PushFilter
+	} else {
+		C.Set_Null(unsafe.Pointer(c_config.pushFilter))
+	}
+
+	if config.PullFilter != nil {
+		// Put the C callbacks in
+		c_config.pullFilter = (C.CBLReplicationFilter)(C.gatewayPullFilterCallback)
+		pullKey := config.FilterContext.Value(pullCallback).(string)
+		pullFilterCallbacks[pullKey] = config.PullFilter
+	} else {
+		C.Set_Null(unsafe.Pointer(c_config.pullFilter))
+	}
+
 	// Place the context into a mutable dict.
-	dict := storeContextInMutableDict(config.FilterContext, config.FilterKeys)
-	c_config.filterContext = unsafe.Pointer(dict)
+	if config.FilterContext != nil && len(config.FilterKeys) > 0 {
+		dict := storeContextInMutableDict(config.FilterContext, config.FilterKeys)
+		c_config.context = unsafe.Pointer(dict)
+	} else {
+		C.Set_Null(unsafe.Pointer(c_config.context))
+	}
+
+	// Conflict Resolver callback
+	if config.Resolver != nil {
+		c_config.conflictResolver = (C.CBLConflictResolver)(C.gatewayConflictResolverCallback)
+		conflictKey := config.FilterContext.Value(conflictResolver).(string)
+		conflictResolverCallbacks[conflictKey] = config.Resolver
+	} else {
+		C.Set_Null(unsafe.Pointer(c_config.conflictResolver))
+	}
 
 	c_replicator := C.CBLReplicator_New(c_config, err)
 	if (*err).code == 0 {
@@ -305,11 +460,11 @@ func RemovePullFilterListener(key string) {
 type ReplicatorActivityLevel uint8
 
 const (
-	ReplicatorStopped ReplicatorActivityLevel = iota ///< The replicator is unstarted, finished, or hit a fatal error.
-    ReplicatorOffline		///< The replicator is offline, as the remote host is unreachable.
-    ReplicatorConnecting	///< The replicator is connecting to the remote host.
-    ReplicatorIdle			///< The replicator is inactive, waiting for changes to sync.
-    ReplicatorBusy			///< The replicator is actively transferring data.
+	Stopped ReplicatorActivityLevel = iota ///< The replicator is unstarted, finished, or hit a fatal error.
+    Offline		///< The replicator is offline, as the remote host is unreachable.
+    Connecting	///< The replicator is connecting to the remote host.
+    Idle			///< The replicator is inactive, waiting for changes to sync.
+    Busy			///< The replicator is actively transferring data.
 )
 
 /** A fractional progress value. The units are undefined; the only meaningful number is the
@@ -372,21 +527,21 @@ type ReplicatorChangeListener func(ctx context.Context, replicator *Replicator, 
 //                                                   CBLReplicatorChangeListener _cbl_nonnull, 
 //                                                   void *context) CBLAPI;
 
-// func (rep *Replicator) AddChangeListener(listener ReplicatorChangeListener, ctx context.Context, ctxKeys []string) (*ListenerToken, error) {
-// 	if v := ctx.Value(uuid); v != nil {
-// 		key, ok := v.(string)
-// 		if ok {
-// 			replicatorCallbacks[key] = listener
-// 			mutableDictContext := storeContextInMutableDict(ctx, ctxKeys)
-// 			token := C.CBLReplicator_AddChangeListener(rep.rep,
-// 				(C.CBLReplicatorChangeListener)(C.gatewayReplicatorChangeCallback), unsafe.Pointer(mutableDictContext))			
-// 			listener_token := ListenerToken{key,token,"ReplicatorChangeListener"}
-// 			return &listener_token, nil
-// 		}
-// 	}
-// 	ErrCBLInternalError = fmt.Errorf("CBL: No UUID present in context.")
-// 	return nil, ErrCBLInternalError
-// }
+func (rep *Replicator) AddChangeListener(listener ReplicatorChangeListener, ctx context.Context, ctxKeys []string) (*ListenerToken, error) {
+	if v := ctx.Value(uuid); v != nil {
+		key, ok := v.(string)
+		if ok {
+			replicatorCallbacks[key] = listener
+			mutableDictContext := storeContextInMutableDict(ctx, ctxKeys)
+			token := C.CBLReplicator_AddChangeListener(rep.rep,
+				(C.CBLReplicatorChangeListener)(C.gatewayReplicatorChangeCallback), unsafe.Pointer(mutableDictContext))			
+			listener_token := ListenerToken{key,token,"ReplicatorChangeListener"}
+			return &listener_token, nil
+		}
+	}
+	ErrCBLInternalError = fmt.Errorf("CBL: No UUID present in context.")
+	return nil, ErrCBLInternalError
+}
 
 /** Flags describing a replicated document. */
 // typedef CBL_ENUM(unsigned, CBLDocumentFlags) {
@@ -436,18 +591,18 @@ type ReplicatedDocumentListener func(ctx context.Context, replicator *Replicator
 // CBLListenerToken* CBLReplicator_AddDocumentListener(CBLReplicator* _cbl_nonnull,
 //                                                     CBLReplicatedDocumentListener _cbl_nonnull,
 //                                                     void *context) CBLAPI;
-// func (rep *Replicator) AddDocumentListener(listener ReplicatedDocumentListener, ctx context.Context, ctxKeys []string) (*ListenerToken, error) {
-// 	if v := ctx.Value(uuid); v != nil {
-// 		key, ok := v.(string)
-// 		if ok {
-// 			replicatedDocCallbacks[key] = listener
-// 			mutableDictContext := storeContextInMutableDict(ctx, ctxKeys)
-// 			token := C.CBLReplicator_AddDocumentListener(rep.rep,
-// 				(C.CBLReplicatedDocumentListener)(C.gatewayReplicatedDocumentCallback), unsafe.Pointer(mutableDictContext))			
-// 			listener_token := ListenerToken{key,token,"ReplicatedDocumentListener"}
-// 			return &listener_token, nil
-// 		}
-// 	}
-// 	ErrCBLInternalError = fmt.Errorf("CBL: No UUID present in context.")
-// 	return nil, ErrCBLInternalError
-// }
+func (rep *Replicator) AddDocumentListener(listener ReplicatedDocumentListener, ctx context.Context, ctxKeys []string) (*ListenerToken, error) {
+	if v := ctx.Value(uuid); v != nil {
+		key, ok := v.(string)
+		if ok {
+			replicatedDocCallbacks[key] = listener
+			mutableDictContext := storeContextInMutableDict(ctx, ctxKeys)
+			token := C.CBLReplicator_AddDocumentListener(rep.rep,
+				(C.CBLReplicatedDocumentListener)(C.gatewayReplicatedDocumentCallback), unsafe.Pointer(mutableDictContext))			
+			listener_token := ListenerToken{key,token,"ReplicatedDocumentListener"}
+			return &listener_token, nil
+		}
+	}
+	ErrCBLInternalError = fmt.Errorf("CBL: No UUID present in context.")
+	return nil, ErrCBLInternalError
+}
