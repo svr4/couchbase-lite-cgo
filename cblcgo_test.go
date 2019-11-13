@@ -51,7 +51,7 @@ func TestSaveAndDeleteDocuments(t *testing.T) {
 	
 	config.flags = Database_Create
 
-	if db, db_err := Open("my_db2", &config); db_err == nil {
+	if db, db_err := Open("my_db3", &config); db_err == nil {
 
 		doc_to_delete := NewDocument()
 		doc_to_delete.Props["name"] = "Luke"
@@ -149,7 +149,7 @@ func TestSaveAndRetrieveDocuments(t *testing.T) {
 	
 	config.flags = Database_Create
 
-	if db, db_err := Open("my_db3", &config); db_err == nil {
+	if db, db_err := Open("my_db4", &config); db_err == nil {
 
 		doc := NewDocumentWithId("test")
 		doc.SetPropertiesAsJSON("{\"name\": \"Marcel\", \"lastname\": \"Rivera\", \"age\": 30, \"email\": \"marcel.rivera@gmail.com\"}")
@@ -192,7 +192,7 @@ func TestProperties(t *testing.T) {
 	
 	config.flags = Database_Create
 
-	if db, db_err := Open("my_db4", &config); db_err == nil {
+	if db, db_err := Open("my_db5", &config); db_err == nil {
 
 		original := NewDocumentWithId("test2")
 		original.Props["name"] = "Kylo"
@@ -240,7 +240,7 @@ func TestDocumentListener(t *testing.T) {
 	
 	config.flags = Database_Create
 
-	if db, db_err := Open("my_db5", &config); db_err == nil {
+	if db, db_err := Open("my_db6", &config); db_err == nil {
 
 		doc := NewDocumentWithId("documentToListenTo")
 		doc.SetPropertiesAsJSON("{\"name\": \"Marcel\", \"lastname\": \"Rivera\", \"age\": 30, \"email\": \"marcel.rivera@gmail.com\"}")
@@ -289,7 +289,7 @@ func TestQuery(t *testing.T) {
 	
 	config.flags = Database_Create
 
-	if db, db_err := Open("my_db6", &config); db_err == nil {
+	if db, db_err := Open("my_db7", &config); db_err == nil {
 
 		// Create an index
 		var spec IndexSpec
@@ -367,7 +367,7 @@ func TestBlob(t *testing.T) {
 	
 	config.flags = Database_Create
 
-	if db, db_err := Open("my_db7", &config); db_err == nil {
+	if db, db_err := Open("my_db8", &config); db_err == nil {
 
 		doc := NewDocumentWithId("docBlob")
 		doc.SetPropertiesAsJSON("{\"name\": \"Marcel\", \"lastname\": \"Rivera\", \"age\": 30, \"email\": \"marcel.rivera@gmail.com\"}")
@@ -444,7 +444,7 @@ func TestListeners(t *testing.T) {
 	
 	config.flags = Database_Create
 
-	if db, db_err := Open("my_db8", &config); db_err == nil {
+	if db, db_err := Open("my_db9", &config); db_err == nil {
 
 		// Save the doc, returns the same doc so only release one reference at the end.
 		ctx := context.WithValue(context.Background(), "package", "cblcgo")
@@ -505,7 +505,7 @@ func TestNotificationCallback(t *testing.T) {
 	
 	config.flags = Database_Create
 
-	if db, db_err := Open("my_db9", &config); db_err == nil {
+	if db, db_err := Open("my_db10", &config); db_err == nil {
 
 		doc := NewDocumentWithId("notifCallback")
 		doc.SetPropertiesAsJSON("{\"name\": \"Marcel\", \"lastname\": \"Rivera\", \"age\": 30, \"email\": \"marcel.rivera@gmail.com\"}")

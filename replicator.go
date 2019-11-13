@@ -38,14 +38,6 @@ void SetProxyType(CBLProxySettings * proxy, CBLProxyType type) {
 	proxy->type = type;
 }
 
-// void SetPinnedCertToNull(CBLReplicatorConfiguration *config) {
-// 	config->pinnedServerCertificate = NULL;
-// }
-
-// void SetTrustedCertToNull(CBLReplicatorConfiguration *config) {
-// 	config->trustedRootCertificates = NULL;
-// }
-
 */
 import "C"
 import "unsafe"
@@ -305,30 +297,25 @@ func NewReplicator(config ReplicatorConfiguration) (*Replicator, error) {
 		C.Set_Null(unsafe.Pointer(c_config.proxy))
 	}
 
-	// fmt.Println(len(config.PinnedServerCertificate))
 	if len(config.PinnedServerCertificate) > 0 {
 		certSize := unsafe.Sizeof(config.PinnedServerCertificate)
 		certBytes := C.CBytes(config.PinnedServerCertificate)
 		c_config.pinnedServerCertificate = C.FLSlice{unsafe.Pointer(certBytes), C.size_t(certSize)}
 	} else {
-		//C.SetPinnedCertToNull(c_config)
 		c_config.pinnedServerCertificate = C.kFLSliceNull
 	}
 
 
-	// fmt.Println(len(config.TrustedRootCertificates))
 	if len(config.TrustedRootCertificates) > 0 {
 		// Trusted Certificates
 		trustedCertSize := unsafe.Sizeof(config.TrustedRootCertificates)
 		trustedCertBytes := C.CBytes(config.TrustedRootCertificates)
 		c_config.trustedRootCertificates = C.FLSlice{unsafe.Pointer(trustedCertBytes), C.size_t(trustedCertSize)}
 	} else {
-		//C.SetTrustedCertToNull(c_config)
 		c_config.trustedRootCertificates = C.kFLSliceNull
 	}
 
 	// Process Headers
-	fmt.Println(len(config.Headers))
 	if len(config.Headers) > 0 {
 		mutableDict := C.FLMutableDict_New()
 
@@ -338,12 +325,10 @@ func NewReplicator(config ReplicatorConfiguration) (*Replicator, error) {
 			storeGoValueInSlot(fl_slot, v)
 			C.free(unsafe.Pointer(c_key))
 		}
-		// fl_dict := C.FLMutableDict_GetSource(mutableDict)
 		fl_dict := C.FLDict(mutableDict)
 		c_config.headers = fl_dict
 	} else {
-		// c_config.headers = C.kFLEmptyDict
-		C.Set_Null(unsafe.Pointer(c_config.headers))
+		c_config.headers = C.FLDict(C.FLMutableDict_New())
 	}
 
 	// Process channels
@@ -353,7 +338,6 @@ func NewReplicator(config ReplicatorConfiguration) (*Replicator, error) {
 			chan_slot := C.FLMutableArray_Append(chan_array)
 			storeGoValueInSlot(chan_slot, config.Channels[i]);
 		}
-		// c_config.channels = C.FLMutableArray_GetSource(chan_array)
 		c_config.channels = C.FLArray(chan_array)
 	} else {
 		c_config.channels = C.kFLEmptyArray
@@ -366,13 +350,11 @@ func NewReplicator(config ReplicatorConfiguration) (*Replicator, error) {
 			doc_slot := C.FLMutableArray_Append(docIds_array)
 			storeGoValueInSlot(doc_slot, config.DocumentIds[ii]);
 		}
-		// c_config.documentIDs = C.FLMutableArray_GetSource(docIds_array)
 		c_config.documentIDs = C.FLArray(docIds_array)
 	} else {
-		c_config.documentIDs = C.kFLEmptyArray
+		c_config.documentIDs = C.FLArray(C.FLMutableArray_New())
 	}
 
-	// callbacks that I have yet to define in bridge
 	// The pullCallback and pushCallback keys should already be in the context.
 	if config.PushFilter != nil {
 		// Put the C callbacks in
@@ -409,7 +391,6 @@ func NewReplicator(config ReplicatorConfiguration) (*Replicator, error) {
 		C.Set_Null(unsafe.Pointer(c_config.conflictResolver))
 	}
 
-	fmt.Println(c_config)
 	c_replicator := C.CBLReplicator_New(c_config, err)
 	if (*err).code == 0 {
 		replicator := Replicator{c_replicator}

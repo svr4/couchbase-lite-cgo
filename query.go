@@ -116,10 +116,7 @@ func (q *Query) SetParameters(parameters map[string]interface{}) error {
 		c_key := C.CString(key)
 		v_slot := C.FLMutableDict_Set(mutable_dict, C.FLStr(c_key))
 		storeGoValueInSlot(v_slot, val)
-		//C.free(unsafe.Pointer(c_key))
 	}
-  //fmt.Println(uint32(C.FLDict_Count(mutable_dict)))
-	//fl_dict := C.FLMutableDict_GetSource(mutable_dict)
   C.CBLQuery_SetParameters(q.q, mutable_dict)  
 	return nil
 }

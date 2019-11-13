@@ -23,11 +23,6 @@ char * getDocIDFromArray(char **docIds, unsigned index) {
 void Set_Null(void * ptr) {
 	ptr = NULL;
 }
-// This is a hammer
-bool Close_Database(CBLDatabase *db) {
-	CBLError e;
-	return CBLDatabase_Close(db, &e);
-}
 
 */
 import "C"
@@ -247,11 +242,8 @@ func Open(name string, config *DatabaseConfiguration) (*Database, error) {
 func (db *Database) Close() bool {
 	err := (*C.CBLError)(C.malloc(C.sizeof_CBLError))
 	defer C.free(unsafe.Pointer(err))
-	// fmt.Println(db)
-	result := C.CBLDatabase_Close(db.db, err)
-	//result := C.Close_Database(db.db)
-	// C.free(unsafe.Pointer(err))
 	C.free(unsafe.Pointer(db.config))
+	result := C.CBLDatabase_Close(db.db, err)
 	return bool(result)
 }
 

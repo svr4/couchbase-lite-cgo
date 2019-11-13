@@ -4,5 +4,5 @@ include
 *.test
 db/
 .vscode/
-switch_lib.sh
 default.profraw
+switch_lib.sh

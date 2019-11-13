@@ -6,94 +6,124 @@ import "testing"
 import "fmt"
 import "context"
 
+/*
+Notes on testing replication:
+
+* I separeted replicator tests from the rest because it's easier to perform them this way.
+* To run the test make sure couchbase server and sync gateway are up and running.
+* Make sure the sync gateway is properly configured.
+* Continous push/pull doesn't support document Id's.
+* It's best to work with separate replicators for push and pull for now.
+* PushPull isn't working properly for me, I need to investigate further.
+* It's only pulling when no DocId's are defined and pull with no DocId's defined.
+*/
+
 func TestReplicationHTTP(t *testing.T) {
 	var config DatabaseConfiguration
 
-	var encryption_key EncryptionKey
-	encryption_key.algorithm = EncryptionNone
-	encryption_key.bytes = make([]byte, 0)
+	// var encryption_key EncryptionKey
+	// encryption_key.algorithm = EncryptionNone
+	// encryption_key.bytes = make([]byte, 0)
 
 	config.directory = "./db"
-	config.encryptionKey = encryption_key
+	// config.encryptionKey = encryption_key
 	
 	config.flags = Database_Create
 
-	if db, db_err := Open("my_db10", &config); db_err == nil {
+	if db, db_err := Open("my_db11", &config); db_err == nil {
 
-		doc := NewDocumentWithId("replicatedDoc1")
-		doc.SetPropertiesAsJSON("{\"name\": \"Marcel\", \"lastname\": \"Rivera\", \"age\": 30, \"email\": \"marcel.rivera@gmail.com\"}")
-		// Save the doc, returns the same doc so only release one reference at the end.
-		if _, err := db.Save(doc, LastWriteWins); err == nil {
-			var replicator_config ReplicatorConfiguration
-			replicator_config.Db = db
-			replicator_config.Endpt = NewEndpointWithURL("ws://localhost:4985/my_db")
-			replicator_config.Replicator = PushAndPull
-			replicator_config.Continious = true
-			replicator_config.Auth = NewBasicAuthentication("test", "testtest")
-			// No proxy settings
-			// No certificates this is HTTP
-			replicator_config.DocumentIds = []string{"replicatedDoc1"}
-			replicator_config.PullFilter = func (ctx context.Context, doc *Document, isDeleted bool) bool {
-				fmt.Println("Pull Filter callback")
-				return true
+		var replicator_config ReplicatorConfiguration
+		replicator_config.Db = db
+		replicator_config.Endpt = NewEndpointWithURL("ws://localhost:4985/my_db11")
+		replicator_config.Replicator =  PushAndPull
+		replicator_config.Continious = false
+		replicator_config.Auth = NewBasicAuthentication("test", "testtest")
+		// No proxy settings
+		// No certificates this is HTTP
+		// replicator_config.DocumentIds = []string{}
+		// replicator_config.DocumentIds = []string{}
+		replicator_config.PullFilter = func (ctx context.Context, doc *Document, isDeleted bool) bool {
+			fmt.Println("Pull Filter callback")
+			return true
+		}
+
+		replicator_config.PushFilter = func (ctx context.Context, doc *Document, isDeleted bool) bool {
+			fmt.Println("Push Filter callback")
+			return true
+		}
+
+		replicator_config.Resolver = func (ctx context.Context, documentId string,
+			localDocument *Document, remoteDocument *Document) *Document {
+				fmt.Println("Conflict Resolver")
+				return localDocument
 			}
+		
+		ctx := context.WithValue(context.Background(), "package", "cblcgo")
+		ctx = context.WithValue(ctx, pushCallback, "myPushCallback")
+		ctx = context.WithValue(ctx, pullCallback, "myPullCallback")
+		ctx = context.WithValue(ctx, conflictResolver, "myResolverCallback")
+		replicator_config.Channels = []string{"foo"}
+		replicator_config.FilterContext = ctx
+		replicator_config.FilterKeys = []string{"package", pushCallback, pullCallback, conflictResolver}
 
-			replicator_config.PushFilter = func (ctx context.Context, doc *Document, isDeleted bool) bool {
-				fmt.Println("Push Filter callback")
-				return true
-			}
+		var replicatorChangeToken *ListenerToken
+		completedSync := false
 
-			replicator_config.Resolver = func (ctx context.Context, documentId string,
-				localDocument *Document, remoteDocument *Document) *Document {
-					fmt.Println("Conflict Resolver")
-					return localDocument
+		if replicator, rerr := NewReplicator(replicator_config); rerr == nil {
+			rep_listener := func(ctx context.Context, replicator *Replicator, status *ReplicatorStatus) {
+				fmt.Println("Replicator Change Listener")
+				switch status.Activity {
+				case Idle:
+					fmt.Println("Activity: Idle")
+					break;
+				case Offline:
+					fmt.Println("Activity: Offline")
+					break;
+				case Busy:
+					fmt.Println("Activity: Busy")
+					break;
+				case Stopped:
+					fmt.Println("Activity: Stopped")
+					break;
+				case Connecting:
+					fmt.Println("Activity: Connecting")
+					break;
 				}
-			
-			ctx := context.WithValue(context.Background(), "package", "cblcgo")
-			ctx = context.WithValue(ctx, pushCallback, "myPushCallback")
-			ctx = context.WithValue(ctx, pullCallback, "myPullCallback")
-			ctx = context.WithValue(ctx, conflictResolver, "myResolverCallback")
-			replicator_config.Channels = []string{"foo"}
-			replicator_config.FilterContext = ctx
-			replicator_config.FilterKeys = []string{"package", pushCallback, pullCallback, conflictResolver}
-
-
-			if replicator, rerr := NewReplicator(replicator_config); rerr == nil {
-				rep_listener := func(ctx context.Context, replicator *Replicator, status *ReplicatorStatus) {
-					fmt.Println("Replicator Change Listener")
-				}
-				rep_ctx := context.WithValue(context.Background(), uuid, "myReplicatorCallback")
-				if change_token, r_err := replicator.AddChangeListener(rep_listener, rep_ctx, []string{uuid}); r_err == nil {
-					rep_doc_ctx := context.WithValue(context.Background(), uuid, "myReplicatorDocCallback")
-					rep_doc_listener := func(ctx context.Context, replicator *Replicator,
-						isPush bool, numDocuments uint, documents *ReplicatedDocument) {
-							fmt.Println("Replicator Doc Listener")
-						}
-					if doc_token, d_err := replicator.AddDocumentListener(rep_doc_listener, rep_doc_ctx, []string{uuid}); d_err == nil {
-						replicator.Start()
-						// Lets edit and see if it makes it back to the server.
-						doc.Props["name"] = "Lecram"
-						if _, derr := db.Save(doc, LastWriteWins); derr == nil {
-							doc.Release()
-						}
-						// Let the db sync
-						//time.Sleep(8 * time.Second)
-						for {}
-						replicator.Stop()
-						db.RemoveListener(doc_token)
-					} else {
-						t.Error(d_err)
-					}
-					db.RemoveListener(change_token)
+				// Workaround for BUG :https://github.com/couchbase/couchbase-lite-ios/issues/1816.
+				if status.Progress.FractionComplete ==  1.0 {
+					fmt.Println("All documents synced")
+					//completedSync = true
 				} else {
-					t.Error(r_err)
+					 fmt.Println("Documents to synced so far: " + string(status.Progress.DocumentCount))
 				}
-			} else {
-				t.Error(rerr)
 			}
+			rep_ctx := context.WithValue(context.Background(), uuid, "myReplicatorCallback")
+			if change_token, r_err := replicator.AddChangeListener(rep_listener, rep_ctx, []string{uuid}); r_err == nil {
+				replicatorChangeToken = change_token
+				
+			} else {
+				t.Error(r_err)
+			}
+
+			replicator.Start()
+
+
+			doc := NewDocumentWithId("replicatedDoc1")
+			r := doc.SetPropertiesAsJSON("{\"name\": \"Marcel\", \"lastname\": \"Rivera\", \"age\": 30, \"email\": \"marcel.rivera@gmail.com\"}")
+			fmt.Println(r)
+			
+			// Save the doc, the next time you run the replicator it should sync the doc back to the bucket.
+			if _, err := db.Save(doc, LastWriteWins); err != nil {
+				t.Error(err)
+			}
+
+			for !completedSync {}
+			replicator.Stop()
+			db.RemoveListener(replicatorChangeToken)
+
 
 		} else {
-			t.Error(err)
+			t.Error(rerr)
 		}
 
 		if !db.Close() {

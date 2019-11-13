@@ -22,16 +22,12 @@ FLValue FLDict_AsValue(FLDict);
 bool is_Null(void *);
 void SetProxyType(CBLProxySettings * proxy, CBLProxyType);
 void Set_Null(void *);
-bool Close_Database(CBLDatabase *);
-// void SetPinnedCertToNull(CBLReplicatorConfiguration *);
-// void SetTrustedCertToNull(CBLReplicatorConfiguration *config);
 
 */
 import "C"
 import "unsafe"
 import "context"
 import "reflect"
-import "fmt"
 
 //export databaseListenerBridge
 func databaseListenerBridge(c unsafe.Pointer, db *C.CBLDatabase, numDocs C.unsigned, docIDs **C.char) {
@@ -82,7 +78,6 @@ func documentListenerBridge(c unsafe.Pointer, db *C.CBLDatabase, c_docID *C.char
 	//callback := 
 	//(*callback)(ctx, &database, docId)
 	v := ctx.Value(uuid).(string)
-	fmt.Println(len(docCallbacks))
 	fn, ok := docCallbacks[v]
 	if ok {
 		fn(ctx, &database, docId)
@@ -130,7 +125,7 @@ func pushFilterBridge(c unsafe.Pointer, doc *C.CBLDocument, isDeleted C.bool) C.
 	if ok {
 		return C.bool(fn(ctx, &d, bool(isDeleted)))
 	}
-	return false
+	return C.bool(false)
 }
 //export pullFilterBridge
 func pullFilterBridge(c unsafe.Pointer, doc *C.CBLDocument, isDeleted C.bool) C.bool {
@@ -146,7 +141,7 @@ func pullFilterBridge(c unsafe.Pointer, doc *C.CBLDocument, isDeleted C.bool) C.
 	if ok {
 		return C.bool(fn(ctx, &d, bool(isDeleted)))
 	}
-	return false
+	return C.bool(false)
 }
 //export replicatorChangeBridge
 func replicatorChangeBridge(c unsafe.Pointer, replicator *C.CBLReplicator, status *C.CBLReplicatorStatus) {
@@ -243,7 +238,7 @@ func getFLValueToGoValue(fl_val C.FLValue) (interface{}, error) {
 			return val, nil
 		case C.kFLString:
 			fl_str := C.FLValue_AsString(fl_val)
-			val = C.GoString((*C.char)(fl_str.buf))
+			val = C.GoStringN((*C.char)(fl_str.buf), C.int(fl_str.size))
 			return val, nil
 		case C.kFLData:
 			fl_data_slice := C.FLValue_AsData(fl_val)
@@ -414,12 +409,9 @@ func storeContextInMutableDict(ctx context.Context, keys []string) C.FLMutableDi
 	mutableDict := C.FLMutableDict_New()
 
 	for i:=0; i < len(keys); i++ {
-		//fmt.Println(keys[i])
-		//fmt.Println(reflect.TypeOf(ctx.Value(keys[i])).Kind())
 		c_key := C.CString(keys[i])
 		fl_slot := C.FLMutableDict_Set(mutableDict, C.FLStr(c_key))
 		storeGoValueInSlot(fl_slot, ctx.Value(keys[i]))
-		//C.free(unsafe.Pointer(c_key))
 	}
 
 	return mutableDict
