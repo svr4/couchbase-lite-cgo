@@ -6,3 +6,4 @@ db/
 .vscode/
 default.profraw
 switch_lib.sh
+*.der

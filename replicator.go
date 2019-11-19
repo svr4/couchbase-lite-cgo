@@ -298,7 +298,7 @@ func NewReplicator(config ReplicatorConfiguration) (*Replicator, error) {
 	}
 
 	if len(config.PinnedServerCertificate) > 0 {
-		certSize := unsafe.Sizeof(config.PinnedServerCertificate)
+		certSize := len(config.PinnedServerCertificate)
 		certBytes := C.CBytes(config.PinnedServerCertificate)
 		c_config.pinnedServerCertificate = C.FLSlice{unsafe.Pointer(certBytes), C.size_t(certSize)}
 	} else {
@@ -308,7 +308,7 @@ func NewReplicator(config ReplicatorConfiguration) (*Replicator, error) {
 
 	if len(config.TrustedRootCertificates) > 0 {
 		// Trusted Certificates
-		trustedCertSize := unsafe.Sizeof(config.TrustedRootCertificates)
+		trustedCertSize := len(config.TrustedRootCertificates)
 		trustedCertBytes := C.CBytes(config.TrustedRootCertificates)
 		c_config.trustedRootCertificates = C.FLSlice{unsafe.Pointer(trustedCertBytes), C.size_t(trustedCertSize)}
 	} else {
@@ -340,7 +340,8 @@ func NewReplicator(config ReplicatorConfiguration) (*Replicator, error) {
 		}
 		c_config.channels = C.FLArray(chan_array)
 	} else {
-		c_config.channels = C.kFLEmptyArray
+		// c_config.channels = C.kFLEmptyArray
+		c_config.documentIDs = C.FLArray(C.FLMutableArray_New())
 	}
 
 	// Process documentIds
@@ -440,7 +441,9 @@ func RemovePullFilterListener(key string) {
 	delete(pullFilterCallbacks, key)
 }
 
-
+func (rep *Replicator) Release() {
+	C.CBLReplicator_Release(rep.rep)
+}
 /** @} */
 
 
