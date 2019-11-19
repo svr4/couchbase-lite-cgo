@@ -119,7 +119,7 @@ func TestReplicationHTTP(t *testing.T) {
 			for !completedSync {}
 			replicator.Stop()
 			db.RemoveListener(replicatorChangeToken)
-
+			replicator.Release()
 
 		} else {
 			t.Error(rerr)
