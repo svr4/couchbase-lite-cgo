@@ -1,4 +1,3 @@
-include
 *.dylib
 *.so
 *.test
