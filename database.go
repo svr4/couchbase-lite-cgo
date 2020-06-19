@@ -76,15 +76,15 @@ var conflictResolver string = "CONFLICTRESOLVER"
 
 /** Encryption key specified in a \ref CBLDatabaseConfiguration. */
 type EncryptionKey struct {
-    algorithm EncryptionAlgorithm ///< Encryption algorithm
-    bytes []byte ///< Raw key data
+    Algorithm EncryptionAlgorithm ///< Encryption algorithm
+    Bytes []byte ///< Raw key data
 }
 
 /** Database configuration options. */
 type DatabaseConfiguration struct {
-    directory string                  ///< The parent directory of the database
-    flags DatabaseFlags                 ///< Options for opening the database
-    encryptionKey EncryptionKey;         ///< The database's encryption key (if any)
+    Directory string                  ///< The parent directory of the database
+    Flags DatabaseFlags                 ///< Options for opening the database
+    EncryptionKey EncryptionKey;         ///< The database's encryption key (if any)
 }
 
 /** \name  Database file operations
@@ -125,19 +125,19 @@ func DatabaseExists(name, inDirectory string) bool {
 func CopyDatabase(fromPath, toName string, config *DatabaseConfiguration) bool {
 	c_fromPath := C.CString(fromPath)
 	c_toName := C.CString(toName)
-	c_dir := C.CString(config.directory)
+	c_dir := C.CString(config.Directory)
 
 	// need to check length and return false if diff or less than 32
 	var key_data [32]C.uint8_t
-	for i:=0; i < len(config.encryptionKey.bytes); i++ {
-		key_data[i] = C.uint8_t(config.encryptionKey.bytes[i])
+	for i:=0; i < len(config.EncryptionKey.Bytes); i++ {
+		key_data[i] = C.uint8_t(config.EncryptionKey.Bytes[i])
 	}
 
-	encryption_key := C.CBLEncryptionKey{C.uint32_t(config.encryptionKey.algorithm), key_data}
+	encryption_key := C.CBLEncryptionKey{C.uint32_t(config.EncryptionKey.Algorithm), key_data}
 
 	c_config := (*C.CBLDatabaseConfiguration)(C.malloc(C.sizeof_CBLDatabaseConfiguration))
 	c_config.directory = c_dir
-	c_config.flags = C.uint32_t(config.flags)
+	c_config.flags = C.uint32_t(config.Flags)
 	c_config.encryptionKey = encryption_key
 	
 	err := (*C.CBLError)(C.malloc(C.sizeof_CBLError))
@@ -203,19 +203,19 @@ func Open(name string, config *DatabaseConfiguration) (*Database, error) {
 	defer C.free(unsafe.Pointer(c_name))
 	// Convert to C array
 	var key_data [32]C.uint8_t
-	for i:=0; i < len(config.encryptionKey.bytes); i++ {
-		key_data[i] = C.uint8_t(config.encryptionKey.bytes[i])
+	for i:=0; i < len(config.EncryptionKey.Bytes); i++ {
+		key_data[i] = C.uint8_t(config.EncryptionKey.Bytes[i])
 	}
 	// Create C key
-	c_key := C.CBLEncryptionKey{C.uint32_t(config.encryptionKey.algorithm), key_data}
+	c_key := C.CBLEncryptionKey{C.uint32_t(config.EncryptionKey.Algorithm), key_data}
 	// Create C config
 	c_config := (*C.CBLDatabaseConfiguration)(C.malloc(C.sizeof_CBLDatabaseConfiguration))
 
-	c_dir := C.CString(config.directory)
+	c_dir := C.CString(config.Directory)
 	defer C.free(unsafe.Pointer(c_dir))
 
 	c_config.directory = c_dir
-	c_config.flags = C.uint32_t(config.flags)
+	c_config.flags = C.uint32_t(config.Flags)
 	c_config.encryptionKey = c_key
 	
 	err := (*C.CBLError)(C.malloc(C.sizeof_CBLError))
@@ -369,13 +369,13 @@ func (db *Database) DatabaseConfig() *DatabaseConfiguration {
 
 	dir := C.GoString(c_config.directory)
 	flags := DatabaseFlags(c_config.flags)
-	key.algorithm = EncryptionAlgorithm(c_config.encryptionKey.algorithm)
-	key.bytes = make([]byte, 0)
+	key.Algorithm = EncryptionAlgorithm(c_config.encryptionKey.algorithm)
+	key.Bytes = make([]byte, 0)
 	
 	// setup go config
-	config.directory = dir
-	config.encryptionKey = key
-	config.flags = flags
+	config.Directory = dir
+	config.EncryptionKey = key
+	config.Flags = flags
 
 	return &config
 }

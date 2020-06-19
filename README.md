@@ -6,7 +6,7 @@ It currently supports commit https://github.com/couchbaselabs/couchbase-lite-C/c
 
 Replication is now working via `ws://` or `wss://`. Make sure to read the `replicator_test.go` file for more details on how to use replication properly with this library.
 
-The package was built and tested on macOS Mojave (10.14.6) using Go version `go1.12.9 darwin/amd64`.
+The package was built and tested on macOS (10.14.6+) using Go version `go1.12.9 darwin/amd64`.
 
 ## Example
 
@@ -15,12 +15,12 @@ var config DatabaseConfiguration
 
 // Optional encryption key.
 var encryption_key EncryptionKey
-encryption_key.algorithm = EncryptionNone
-encryption_key.bytes = make([]byte, 0)
+encryption_key.Algorithm = EncryptionNone
+encryption_key.Bytes = make([]byte, 0)
 
-config.directory = "./db"
-config.encryptionKey = encryption_key
-config.flags = Database_Create
+config.Directory = "./db"
+config.EncryptionKey = encryption_key
+config.Flags = Database_Create
 
 if db, err := Open("my_db", &config); err == nil {
     // Create a doc
