@@ -2,7 +2,7 @@
 
 This project serves as the Go lang bindings for the couchbase-lite-C library developed by [Couchbase Labs](https://github.com/couchbaselabs).
 
-It currently supports commit https://github.com/couchbaselabs/couchbase-lite-C/commit/e12e4a64911aa97be758e0957338c7d5b7201f5e of the library.
+It currently supports commit [e12e4a6](https://github.com/couchbaselabs/couchbase-lite-C/commit/e12e4a64911aa97be758e0957338c7d5b7201f5e) of the library.
 
 Replication is now working via `ws://` or `wss://`. Make sure to read the `replicator_test.go` file for more details on how to use replication properly with this library.
 
