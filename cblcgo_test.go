@@ -11,12 +11,12 @@ func TestConnection(t *testing.T) {
 	var config DatabaseConfiguration
 
 	var encryption_key EncryptionKey
-	encryption_key.algorithm = EncryptionNone
-	encryption_key.bytes = make([]byte, 0)
+	encryption_key.Algorithm = EncryptionNone
+	encryption_key.Bytes = make([]byte, 0)
 
-	config.directory = "./db"
-	config.encryptionKey = encryption_key
-	config.flags = Database_Create
+	config.Directory = "./db"
+	config.EncryptionKey = encryption_key
+	config.Flags = Database_Create
 
 	if db, err := Open("my_db", &config); err == nil {
 		if !DatabaseExists("my_db", "./db") {
@@ -43,13 +43,13 @@ func TestSaveAndDeleteDocuments(t *testing.T) {
 	var config DatabaseConfiguration
 
 	var encryption_key EncryptionKey
-	encryption_key.algorithm = EncryptionNone
-	encryption_key.bytes = make([]byte, 0)
+	encryption_key.Algorithm = EncryptionNone
+	encryption_key.Bytes = make([]byte, 0)
 
-	config.directory = "./db"
-	config.encryptionKey = encryption_key
+	config.Directory = "./db"
+	config.EncryptionKey = encryption_key
 	
-	config.flags = Database_Create
+	config.Flags = Database_Create
 
 	if db, db_err := Open("my_db3", &config); db_err == nil {
 
@@ -141,13 +141,13 @@ func TestSaveAndRetrieveDocuments(t *testing.T) {
 	var config DatabaseConfiguration
 
 	var encryption_key EncryptionKey
-	encryption_key.algorithm = EncryptionNone
-	encryption_key.bytes = make([]byte, 0)
+	encryption_key.Algorithm = EncryptionNone
+	encryption_key.Bytes = make([]byte, 0)
 
-	config.directory = "./db"
-	config.encryptionKey = encryption_key
+	config.Directory = "./db"
+	config.EncryptionKey = encryption_key
 	
-	config.flags = Database_Create
+	config.Flags = Database_Create
 
 	if db, db_err := Open("my_db4", &config); db_err == nil {
 
@@ -184,13 +184,13 @@ func TestProperties(t *testing.T) {
 	var config DatabaseConfiguration
 
 	var encryption_key EncryptionKey
-	encryption_key.algorithm = EncryptionNone
-	encryption_key.bytes = make([]byte, 0)
+	encryption_key.Algorithm = EncryptionNone
+	encryption_key.Bytes = make([]byte, 0)
 
-	config.directory = "./db"
-	config.encryptionKey = encryption_key
+	config.Directory = "./db"
+	config.EncryptionKey = encryption_key
 	
-	config.flags = Database_Create
+	config.Flags = Database_Create
 
 	if db, db_err := Open("my_db5", &config); db_err == nil {
 
@@ -232,13 +232,13 @@ func TestDocumentListener(t *testing.T) {
 	var config DatabaseConfiguration
 
 	var encryption_key EncryptionKey
-	encryption_key.algorithm = EncryptionNone
-	encryption_key.bytes = make([]byte, 0)
+	encryption_key.Algorithm = EncryptionNone
+	encryption_key.Bytes = make([]byte, 0)
 
-	config.directory = "./db"
-	config.encryptionKey = encryption_key
+	config.Directory = "./db"
+	config.EncryptionKey = encryption_key
 	
-	config.flags = Database_Create
+	config.Flags = Database_Create
 
 	if db, db_err := Open("my_db6", &config); db_err == nil {
 
@@ -281,13 +281,13 @@ func TestQuery(t *testing.T) {
 	var config DatabaseConfiguration
 
 	var encryption_key EncryptionKey
-	encryption_key.algorithm = EncryptionNone
-	encryption_key.bytes = make([]byte, 0)
+	encryption_key.Algorithm = EncryptionNone
+	encryption_key.Bytes = make([]byte, 0)
 
-	config.directory = "./db"
-	config.encryptionKey = encryption_key
+	config.Directory = "./db"
+	config.EncryptionKey = encryption_key
 	
-	config.flags = Database_Create
+	config.Flags = Database_Create
 
 	if db, db_err := Open("my_db7", &config); db_err == nil {
 
@@ -359,13 +359,13 @@ func TestBlob(t *testing.T) {
 	var config DatabaseConfiguration
 
 	var encryption_key EncryptionKey
-	encryption_key.algorithm = EncryptionNone
-	encryption_key.bytes = make([]byte, 0)
+	encryption_key.Algorithm = EncryptionNone
+	encryption_key.Bytes = make([]byte, 0)
 
-	config.directory = "./db"
-	config.encryptionKey = encryption_key
+	config.Directory = "./db"
+	config.EncryptionKey = encryption_key
 	
-	config.flags = Database_Create
+	config.Flags = Database_Create
 
 	if db, db_err := Open("my_db8", &config); db_err == nil {
 
@@ -436,13 +436,13 @@ func TestListeners(t *testing.T) {
 	var config DatabaseConfiguration
 
 	var encryption_key EncryptionKey
-	encryption_key.algorithm = EncryptionNone
-	encryption_key.bytes = make([]byte, 0)
+	encryption_key.Algorithm = EncryptionNone
+	encryption_key.Bytes = make([]byte, 0)
 
-	config.directory = "./db"
-	config.encryptionKey = encryption_key
+	config.Directory = "./db"
+	config.EncryptionKey = encryption_key
 	
-	config.flags = Database_Create
+	config.Flags = Database_Create
 
 	if db, db_err := Open("my_db9", &config); db_err == nil {
 
@@ -497,13 +497,13 @@ func TestNotificationCallback(t *testing.T) {
 	var config DatabaseConfiguration
 
 	var encryption_key EncryptionKey
-	encryption_key.algorithm = EncryptionNone
-	encryption_key.bytes = make([]byte, 0)
+	encryption_key.Algorithm = EncryptionNone
+	encryption_key.Bytes = make([]byte, 0)
 
-	config.directory = "./db"
-	config.encryptionKey = encryption_key
+	config.Directory = "./db"
+	config.EncryptionKey = encryption_key
 	
-	config.flags = Database_Create
+	config.Flags = Database_Create
 
 	if db, db_err := Open("my_db10", &config); db_err == nil {
 
