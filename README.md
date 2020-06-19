@@ -75,7 +75,7 @@ func main() {
 3. Run `go build`, it will fail. You need to copy or symlink the built CouchbaseLiteC binary, using the code up to the latest supported commit described above, into the mod directory under `$GOPATH/pkg/mod/github.com/svr4/couchbase-lite-cgo@vX.X.X/`.
 
 4. For macOS only:
-    Make sure the `@rpath` and the `@` are set to the location of the CouchbaseLiteC binary in your go binary, with the following command:
+    Make sure the `@rpath` and the `@loader_path` are set to the location of the CouchbaseLiteC binary in your go binary, with the following command:
     `install_name_tool -change @rpath/libCouchbaseLiteC.dylib @loader_path/libCouchbaseLiteC.dylib your_go_binary`
 
 5. Run `go build`.
