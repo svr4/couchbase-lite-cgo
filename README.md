@@ -70,7 +70,7 @@ func main() {
 
 ```
 
-2. Run `go mod init $(pwd)`.
+2. In the root of your go project, run `go mod init $(pwd)`.
 
 3. Run `go build`, it will fail. You need to copy or symlink the built CouchbaseLiteC binary, using the code up to the latest supported commit described above, into the mod directory under `$GOPATH/pkg/mod/github.com/svr4/couchbase-lite-cgo@vX.X.X/`.
 
