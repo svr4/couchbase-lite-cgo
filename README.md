@@ -10,50 +10,73 @@ The package was built and tested on macOS (10.14.6+) using Go version `go1.12.9 
 
 ## Example
 
+1. Copy and paste the following code:
+
 ```go
-var config DatabaseConfiguration
+package main
 
-// Optional encryption key.
-var encryption_key EncryptionKey
-encryption_key.Algorithm = EncryptionNone
-encryption_key.Bytes = make([]byte, 0)
 
-config.Directory = "./db"
-config.EncryptionKey = encryption_key
-config.Flags = Database_Create
+import (
+	cblcgo "github.com/svr4/couchbase-lite-cgo"
+	"fmt"
+)
 
-if db, err := Open("my_db", &config); err == nil {
-    // Create a doc
-    doc := NewDocumentWithId("test")
-    doc.Props["name"] = "Luke"
-    doc.Props["lastname"] = "Skywalker"
-    doc.Props["age"] = 30
-    doc.Props["email"] = "son.of.skywalker@gmail.com"
-    doc.Props["action"] = "delete"
+func main() {
+	var config cblcgo.DatabaseConfiguration
 
-    if _, err2 := db.Save(doc, LastWriteWins); err2 == nil {
-        // Retrieve the saved doc
-        if savedDoc, e := db.GetMutableDocument("test"); e == nil {
-            for k, v := range savedDoc.Props {
-                if _doc.Props[k] != v {
-                    fmt.Println("Saved document and retrieved document are different.")
-                }
-            }
-            savedDoc.Release()
-        } else {
-            fmt.Println(e)
-        }
-    } else {
-        fmt.Println(err2)
-    }
+	// Optional encryption key.
+	var encryption_key cblcgo.EncryptionKey
+	encryption_key.Algorithm = cblcgo.EncryptionNone
+	encryption_key.Bytes = make([]byte, 0)
 
-    if !db.Close() {
-		fmt.Println("Couldn't close the database.")
+	config.Directory = "./"
+	config.EncryptionKey = encryption_key
+	config.Flags = cblcgo.Database_Create
+
+	if db, err := cblcgo.Open("my_db", &config); err == nil {
+		// Create a doc
+		doc := cblcgo.NewDocumentWithId("test")
+		doc.Props["name"] = "Luke"
+		doc.Props["lastname"] = "Skywalker"
+		doc.Props["age"] = 30
+		doc.Props["email"] = "son.of.skywalker@gmail.com"
+		doc.Props["action"] = "delete"
+
+		if _, err2 := db.Save(doc, cblcgo.LastWriteWins); err2 == nil {
+			// Retrieve the saved doc
+			if savedDoc, e := db.GetMutableDocument("test"); e == nil {
+				for k, v := range savedDoc.Props {
+					if savedDoc.Props[k] != v {
+						fmt.Println("Saved document and retrieved document are different.")
+					}
+				}
+				savedDoc.Release()
+			} else {
+				fmt.Println(e)
+			}
+		} else {
+			fmt.Println(err2)
+		}
+
+		if !db.Close() {
+			fmt.Println("Couldn't close the database.")
+		}
+
+	} else {
+		fmt.Println(err)
 	}
-
-} else {
-    fmt.Println(err)
+	
 }
+
+2. Run `go mod init $(pwd)`
+
+3. Run `go build`, it will fail. You need to copy or symlink the built CouchbaseLiteC binary, using the code up to the latest supported commit described above, into the mod directory under `$GOPATH/pkg/mod/github.com/svr4/couchbase-lite-cgo@vX.X.X/`.
+
+4. For macOS only:
+    Make sure the `@rpath` and the `@` are set to the location of the CouchbaseLiteC binary in your go binary, with the following command:
+    `install_name_tool -change @rpath/libCouchbaseLiteC.dylib @loader_path/libCouchbaseLiteC.dylib your_go_binary`
+
+5. Run `go build`.
 
 ```
 For more examples look in cblcgo_test.go.
